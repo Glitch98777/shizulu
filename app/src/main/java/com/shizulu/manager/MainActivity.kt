@@ -465,8 +465,8 @@ class MainActivity : Activity() {
 
             addView(executionModePanel())
             addView(wirelessAdbPanel(), spacedParams(top = 10))
-            addView(appearancePanel(), spacedParams(top = 10))
             addView(updaterPanel(), spacedParams(top = 10))
+            addView(appearancePanel(), spacedParams(top = 10))
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -551,8 +551,9 @@ class MainActivity : Activity() {
                 setTextColor(COLORS.ink)
             })
 
+            val savedRelease = savedLatestRelease()
             updaterStatusText = TextView(context).apply {
-                text = "Current build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+                text = visibleUpdaterStatus(savedRelease)
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -563,8 +564,9 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 addView(compactButton("Check", filled = false) { checkForUpdates() }, LinearLayout.LayoutParams(0, dp(42), 1f))
                 updaterButton = compactButton("Update", filled = true) { installLatestUpdate() }.apply {
-                    isEnabled = false
-                    alpha = 0.45f
+                    val enabled = savedRelease?.isNewerThanCurrent() == true
+                    isEnabled = enabled
+                    alpha = if (enabled) 1f else 0.45f
                 }
                 addView(updaterButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
             })
@@ -1070,7 +1072,10 @@ class MainActivity : Activity() {
         val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
         if (pairingCode.isBlank() || port <= 0) {
             appendLog("Wireless ADB test: not configured")
-            showOutput("Wireless ADB", "Wireless ADB is not configured yet. Open Wireless debugging, choose Pair device with pairing code, then save the code and port here.")
+            showOutput(
+                "Wireless ADB",
+                "Pairing required.\n\nOpen Android Settings > Developer options > Wireless debugging, choose Pair device with pairing code, then save that pairing code and port in Shizulu.\n\nStandalone Wireless ADB execution is included in this build; it just needs a fresh pairing first."
+            )
             return
         }
 
@@ -1147,7 +1152,10 @@ class MainActivity : Activity() {
         val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
         if (pairingCode.isBlank() || port <= 0) {
             appendLog("Wireless ADB blocked ${shizule.name}/${action.label}: missing pairing code or port")
-            showOutput("${shizule.name} Wireless ADB", "No pairing code and port are configured. Open Tools > Wireless ADB > Configure.")
+            showOutput(
+                "${shizule.name} Wireless ADB",
+                "Pairing required.\n\nOpen Tools > Wireless ADB > Configure and enter the fresh pairing code plus port from Android's Wireless debugging pairing dialog."
+            )
             return
         }
 
@@ -1363,6 +1371,10 @@ class MainActivity : Activity() {
     private fun checkForUpdates() {
         if (!::updaterStatusText.isInitialized) return
         latestRelease = null
+        settingsPrefs.edit()
+            .remove(KEY_LATEST_RELEASE)
+            .putString(KEY_UPDATER_STATUS, "Checking GitHub releases...")
+            .apply()
         setUpdaterButton(false)
         updaterStatusText.text = "Checking GitHub releases..."
         appendLog("Update check started")
@@ -1375,10 +1387,14 @@ class MainActivity : Activity() {
                     appendLog("Update check ${if (updateAvailable) "found ${release.tag}" else "current"}")
                     mainHandler.post {
                         if (updateAvailable) {
-                            updaterStatusText.text = "Update available: ${release.tag}\nCurrent: ${BuildConfig.GIT_SHA}\nLatest: ${release.commitSha ?: "unknown commit"}"
+                            val status = "Update available: ${release.tag}\nCurrent: ${BuildConfig.GIT_SHA}\nLatest: ${release.commitSha ?: "unknown commit"}"
+                            updaterStatusText.text = status
+                            saveUpdaterState(status, release)
                             setUpdaterButton(true)
                         } else {
-                            updaterStatusText.text = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+                            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+                            updaterStatusText.text = status
+                            saveUpdaterState(status, null)
                             setUpdaterButton(false)
                         }
                     }
@@ -1387,7 +1403,9 @@ class MainActivity : Activity() {
                     val message = it.message ?: it.javaClass.simpleName
                     appendLog("Update check failed: $message")
                     mainHandler.post {
-                        updaterStatusText.text = "Update check failed: $message"
+                        val status = "Update check failed: $message"
+                        updaterStatusText.text = status
+                        saveUpdaterState(status, savedLatestRelease())
                         setUpdaterButton(false)
                     }
                 }
@@ -1395,7 +1413,7 @@ class MainActivity : Activity() {
     }
 
     private fun installLatestUpdate() {
-        val release = latestRelease
+        val release = latestRelease ?: savedLatestRelease()
         if (release == null || !release.isNewerThanCurrent()) {
             Toast.makeText(this, "Check for updates first.", Toast.LENGTH_SHORT).show()
             return
@@ -1408,7 +1426,9 @@ class MainActivity : Activity() {
             return
         }
 
-        updaterStatusText.text = "Downloading ${release.tag}..."
+        val status = "Downloading ${release.tag}..."
+        updaterStatusText.text = status
+        saveUpdaterState(status, release)
         setUpdaterButton(false)
         appendLog("Update download started: ${release.tag}")
 
@@ -1421,7 +1441,9 @@ class MainActivity : Activity() {
                     val message = it.message ?: it.javaClass.simpleName
                     appendLog("Update download failed: $message")
                     mainHandler.post {
-                        updaterStatusText.text = "Update download failed: $message"
+                        val failedStatus = "Update download failed: $message"
+                        updaterStatusText.text = failedStatus
+                        saveUpdaterState(failedStatus, release)
                         setUpdaterButton(true)
                     }
                 }
@@ -1497,7 +1519,9 @@ class MainActivity : Activity() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         appendLog("Launching updater installer: ${release.tag}")
-        updaterStatusText.text = "Downloaded ${release.tag}. Finish the Android installer to update."
+        val status = "Downloaded ${release.tag}. Finish the Android installer to update."
+        updaterStatusText.text = status
+        saveUpdaterState(status, release)
         startActivity(intent)
     }
 
@@ -1505,6 +1529,34 @@ class MainActivity : Activity() {
         if (!::updaterButton.isInitialized) return
         updaterButton.isEnabled = enabled
         updaterButton.alpha = if (enabled) 1f else 0.45f
+    }
+
+    private fun saveUpdaterState(status: String, release: GithubRelease?) {
+        settingsPrefs.edit()
+            .putString(KEY_UPDATER_STATUS, status)
+            .apply {
+                if (release == null) remove(KEY_LATEST_RELEASE) else putString(KEY_LATEST_RELEASE, release.toJson().toString())
+            }
+            .apply()
+    }
+
+    private fun savedUpdaterStatus(): String? {
+        return settingsPrefs.getString(KEY_UPDATER_STATUS, null)?.takeIf { it.isNotBlank() }
+    }
+
+    private fun visibleUpdaterStatus(release: GithubRelease?): String {
+        if (release != null && !release.isNewerThanCurrent()) {
+            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+            saveUpdaterState(status, null)
+            return status
+        }
+        return savedUpdaterStatus() ?: "Current build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+    }
+
+    private fun savedLatestRelease(): GithubRelease? {
+        if (latestRelease != null) return latestRelease
+        val raw = settingsPrefs.getString(KEY_LATEST_RELEASE, null) ?: return null
+        return runCatching { GithubRelease.fromJson(JSONObject(raw)) }.getOrNull()?.also { latestRelease = it }
     }
 
     private fun <T> HttpURLConnection.useResponse(block: (java.io.InputStream) -> T): T {
@@ -1678,6 +1730,8 @@ class MainActivity : Activity() {
         private const val KEY_EXECUTION_MODE = "execution_mode"
         private const val KEY_APPEARANCE_MODE = "appearance_mode"
         private const val KEY_ACCENT_THEME = "accent_theme"
+        private const val KEY_UPDATER_STATUS = "updater_status"
+        private const val KEY_LATEST_RELEASE = "latest_release"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val MAX_LOG_LINES = 160
@@ -1739,7 +1793,29 @@ data class GithubRelease(
     val commitSha: String?,
     val apkName: String,
     val apkUrl: String
-)
+) {
+    fun toJson(): JSONObject {
+        return JSONObject().apply {
+            put("tag", tag)
+            put("name", name)
+            put("commitSha", commitSha ?: "")
+            put("apkName", apkName)
+            put("apkUrl", apkUrl)
+        }
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): GithubRelease {
+            return GithubRelease(
+                tag = obj.optString("tag"),
+                name = obj.optString("name"),
+                commitSha = obj.optString("commitSha").takeIf { it.isNotBlank() },
+                apkName = obj.optString("apkName"),
+                apkUrl = obj.optString("apkUrl")
+            )
+        }
+    }
+}
 
 data class ThemePalette(
     val dark: Boolean,
