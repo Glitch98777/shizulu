@@ -817,9 +817,18 @@ class MainActivity : Activity() {
 
     private fun refreshProfiles(shizules: List<Shizule>) {
         profilesList.removeAllViews()
-        profilesList.addView(secondaryButton("Create Profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(-1, dp(46)))
+        val hiddenBuiltIns = loadHiddenBuiltInProfileKeys()
+        profilesList.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(secondaryButton("Create Profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            if (hiddenBuiltIns.isNotEmpty()) {
+                addView(secondaryButton("Restore Defaults") { restoreBuiltInProfiles() }, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                    leftMargin = dp(10)
+                })
+            }
+        }, LinearLayout.LayoutParams(-1, -2))
 
-        val profiles = PROFILES + loadCustomProfiles()
+        val profiles = PROFILES.filterNot { profileKey(it) in hiddenBuiltIns } + loadCustomProfiles()
         if (::profileSummaryText.isInitialized) {
             profileSummaryText.text = "${profiles.size}\nProfiles"
         }
@@ -861,11 +870,9 @@ class MainActivity : Activity() {
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     addView(compactButton("Run", filled = missing == 0) { runProfile(profile) })
-                    if (profile.custom) {
-                        addView(compactButton("Delete", filled = false) {
-                            confirmDeleteCustomProfile(profile)
-                        }, rowGapParams())
-                    }
+                    addView(compactButton("Delete", filled = false) {
+                        confirmDeleteProfile(profile)
+                    }, rowGapParams())
                 })
             })
         }
@@ -1437,16 +1444,26 @@ class MainActivity : Activity() {
         settingsPrefs.edit().putString(KEY_CUSTOM_PROFILES, profilesToJson(profiles).toString()).apply()
     }
 
-    private fun confirmDeleteCustomProfile(profile: ShizuluProfile) {
+    private fun confirmDeleteProfile(profile: ShizuluProfile) {
         android.app.AlertDialog.Builder(this)
             .setTitle("Delete profile?")
-            .setMessage("${profile.name} will be removed from Shizulu. This does not delete any installed shizules.")
-            .setPositiveButton("Delete") { _, _ -> deleteCustomProfile(profile) }
+            .setMessage(
+                if (profile.custom) {
+                    "${profile.name} will be removed from Shizulu. This does not delete any installed shizules."
+                } else {
+                    "${profile.name} is a built-in profile. It will be hidden from Shizulu, and you can bring it back with Restore Defaults."
+                }
+            )
+            .setPositiveButton("Delete") { _, _ -> deleteProfile(profile) }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
-    private fun deleteCustomProfile(profile: ShizuluProfile) {
+    private fun deleteProfile(profile: ShizuluProfile) {
+        if (!profile.custom) {
+            hideBuiltInProfile(profile)
+            return
+        }
         val before = loadCustomProfiles()
         val remaining = before.filterNot { it.name == profile.name && it.steps == profile.steps }
         if (remaining.size == before.size) {
@@ -1457,6 +1474,43 @@ class MainActivity : Activity() {
         appendLog("Deleted profile ${profile.name}")
         Toast.makeText(this, "Profile deleted", Toast.LENGTH_SHORT).show()
         refreshModules()
+    }
+
+    private fun hideBuiltInProfile(profile: ShizuluProfile) {
+        val hidden = loadHiddenBuiltInProfileKeys() + profileKey(profile)
+        settingsPrefs.edit().putString(KEY_HIDDEN_BUILTIN_PROFILES, JSONArray(hidden.toList()).toString()).apply()
+        appendLog("Deleted built-in profile ${profile.name}")
+        Toast.makeText(this, "Profile deleted", Toast.LENGTH_SHORT).show()
+        refreshModules()
+    }
+
+    private fun restoreBuiltInProfiles() {
+        settingsPrefs.edit().remove(KEY_HIDDEN_BUILTIN_PROFILES).apply()
+        appendLog("Restored built-in profiles")
+        Toast.makeText(this, "Default profiles restored", Toast.LENGTH_SHORT).show()
+        refreshModules()
+    }
+
+    private fun loadHiddenBuiltInProfileKeys(): Set<String> {
+        val raw = settingsPrefs.getString(KEY_HIDDEN_BUILTIN_PROFILES, "[]").orEmpty()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildSet {
+                for (index in 0 until array.length()) {
+                    array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+        }.getOrDefault(emptySet())
+    }
+
+    private fun profileKey(profile: ShizuluProfile): String {
+        return buildString {
+            append(profile.name)
+            append('|')
+            profile.steps.forEach { step ->
+                append(step.moduleId).append('/').append(step.actionId).append(';')
+            }
+        }
     }
 
     private fun profilesToJson(profiles: List<ShizuluProfile>): JSONArray {
@@ -1509,6 +1563,7 @@ class MainActivity : Activity() {
             put("accentTheme", AccentTheme.from(settingsPrefs.getString(KEY_ACCENT_THEME, null)).name)
             put("logs", readLogs())
             put("customProfiles", profilesToJson(loadCustomProfiles()))
+            put("hiddenBuiltInProfiles", JSONArray(loadHiddenBuiltInProfileKeys().toList()))
             put("shizules", JSONArray().apply {
                 store.listRaw().forEach { raw ->
                     runCatching { put(JSONObject(raw)) }
@@ -1547,9 +1602,11 @@ class MainActivity : Activity() {
             val installed = store.installAll(rawShizules)
 
             val customProfiles = backup.optJSONArray("customProfiles") ?: JSONArray()
+            val hiddenBuiltIns = backup.optJSONArray("hiddenBuiltInProfiles") ?: JSONArray()
             settingsPrefs.edit()
                 .putBoolean(KEY_DRY_RUN, backup.optBoolean("dryRun", dryRunEnabled))
                 .putString(KEY_CUSTOM_PROFILES, customProfiles.toString())
+                .putString(KEY_HIDDEN_BUILTIN_PROFILES, hiddenBuiltIns.toString())
                 .putString(KEY_APPEARANCE_MODE, backup.optString("appearanceMode", AppearanceMode.LIGHT.name))
                 .putString(KEY_ACCENT_THEME, backup.optString("accentTheme", AccentTheme.DEFAULT.name))
                 .apply()
@@ -1954,6 +2011,7 @@ class MainActivity : Activity() {
         private const val KEY_LOGS = "logs"
         private const val KEY_DRY_RUN = "dry_run"
         private const val KEY_CUSTOM_PROFILES = "custom_profiles"
+        private const val KEY_HIDDEN_BUILTIN_PROFILES = "hidden_builtin_profiles"
         private const val KEY_EXECUTION_MODE = "execution_mode"
         private const val KEY_APPEARANCE_MODE = "appearance_mode"
         private const val KEY_ACCENT_THEME = "accent_theme"
