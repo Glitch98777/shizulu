@@ -391,7 +391,7 @@ class MainActivity : Activity() {
 
                 addView(primaryButton("Install shizule") { openJsonPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-                grantButton = secondaryButton("Grant Shizuku") { requestShizukuPermission() }
+                grantButton = readableSecondaryButton("Grant Shizuku") { requestShizukuPermission() }
                 addView(grantButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     leftMargin = dp(10)
                 })
@@ -479,11 +479,11 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
 
-            addView(toolsFooterButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
+            addView(readableSecondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(toolsFooterButton("Backup") { openBackupCreator() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-                addView(toolsFooterButton("Restore Backup") { openBackupPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                addView(readableSecondaryButton("Backup") { openBackupCreator() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+                addView(readableSecondaryButton("Restore Backup") { openBackupPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     leftMargin = dp(10)
                 })
             }, spacedParams(top = 10))
@@ -1752,7 +1752,7 @@ class MainActivity : Activity() {
         return textButton(label, COLORS.surface, COLORS.primary, COLORS.primary, onClick)
     }
 
-    private fun toolsFooterButton(label: String, onClick: () -> Unit): TextView {
+    private fun readableSecondaryButton(label: String, onClick: () -> Unit): TextView {
         return textButton(label, COLORS.surface, COLORS.ink, COLORS.outlineStrong, onClick)
     }
 
