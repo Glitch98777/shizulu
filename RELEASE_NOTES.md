@@ -15,6 +15,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Saving a new Wireless ADB port now refreshes the cached connect port instead of reusing an old one.
 - Wireless ADB Auto Repair clears stale cached ports and reruns the reconnect/discovery/scan flow.
 - Persistent ADB tools for foreground keep-alive and battery optimization exemption.
+- Shizule Lab in Tools can install safe built-in test shizules and open a JSON Module Maker editor.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
 - Dark mode now uses a classic charcoal-gray palette instead of near-black AMOLED styling.

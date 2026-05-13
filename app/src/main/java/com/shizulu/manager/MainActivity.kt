@@ -225,6 +225,7 @@ class MainActivity : Activity() {
                 content.addView(sectionTitle("Tools"), spacedParams(top = 8))
                 content.addView(executionModePanel(), spacedParams(top = 10))
                 content.addView(wirelessAdbPanel(), spacedParams(top = 10))
+                content.addView(shizuleLabPanel(), spacedParams(top = 10))
                 content.addView(persistencePanel(), spacedParams(top = 10))
                 content.addView(updaterPanel(), spacedParams(top = 10))
                 content.addView(appearancePanel(), spacedParams(top = 10))
@@ -587,6 +588,36 @@ class MainActivity : Activity() {
                 }
                 addView(keepAliveButton, LinearLayout.LayoutParams(0, dp(42), 1f))
                 addView(batteryButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+            })
+        }
+    }
+
+    private fun shizuleLabPanel(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = "Shizule Lab"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            addView(TextView(context).apply {
+                text = "Install safe test shizules or draft a new JSON shizule inside Shizulu."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("Install Tests", filled = false) { installBuiltInTestShizules() }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("Module Maker", filled = true) { showShizuleMaker() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    leftMargin = dp(10)
+                })
             })
         }
     }
@@ -1109,6 +1140,60 @@ class MainActivity : Activity() {
             .isSuccess
     }
 
+    private fun installBuiltInTestShizules() {
+        var installed = 0
+        var failed = 0
+        builtInTestShizules().forEach { raw ->
+            val shizule = runCatching { Shizule.fromJson(raw) }.getOrNull()
+            if (shizule != null && installTrusted(raw, shizule, refreshAfterInstall = false, showToast = false)) {
+                installed++
+            } else {
+                failed++
+            }
+        }
+        appendLog("Built-in test shizules installed: $installed installed, $failed failed")
+        Toast.makeText(this, "Installed $installed test shizule(s)${if (failed > 0) ", $failed failed" else ""}", Toast.LENGTH_LONG).show()
+        refreshModules()
+    }
+
+    private fun showShizuleMaker() {
+        val editor = EditText(this).apply {
+            setText(blankShizuleTemplate())
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            gravity = Gravity.START or Gravity.TOP
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            minLines = 18
+            setHorizontallyScrolling(false)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setTextColor(COLORS.ink)
+            setHintTextColor(COLORS.muted)
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+        }
+
+        val editorWrap = ScrollView(this).apply {
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            addView(editor, LinearLayout.LayoutParams(-1, -2))
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Module Maker")
+            .setMessage("Edit the JSON, then install it as a shizule.")
+            .setView(editorWrap)
+            .setPositiveButton("Install") { _, _ ->
+                val raw = editor.text.toString()
+                runCatching { Shizule.fromJson(raw) }
+                    .onSuccess { shizule -> installTrusted(raw, shizule) }
+                    .onFailure {
+                        val message = it.message ?: "Invalid shizule JSON"
+                        appendLog("Module Maker install failed: $message")
+                        showOutput("Module Maker", "Invalid shizule:\n\n$message")
+                    }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun requestShizukuPermission() {
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             appendLog("Shizuku permission request failed: Shizuku is not connected")
@@ -1422,6 +1507,102 @@ class MainActivity : Activity() {
             length <= 2 -> "**"
             else -> "*".repeat(length - 2) + takeLast(2)
         }
+    }
+
+    private fun builtInTestShizules(): List<String> {
+        return listOf(
+            shizuleJson(
+                id = "com.shizulu.test.device_probe",
+                name = "Device Probe",
+                version = "1.0.0",
+                description = "Safe test commands for checking shell identity and device properties.",
+                actions = listOf(
+                    "Device Info" to listOf(
+                        "id",
+                        "getprop ro.product.model",
+                        "getprop ro.build.version.release"
+                    ),
+                    "Storage Check" to listOf(
+                        "df /data"
+                    )
+                )
+            ),
+            shizuleJson(
+                id = "com.shizulu.test.settings_reader",
+                name = "Settings Reader",
+                version = "1.0.0",
+                description = "Read-only settings checks for testing ADB privileges without changing anything.",
+                actions = listOf(
+                    "Read Animation Scales" to listOf(
+                        "settings get global window_animation_scale",
+                        "settings get global transition_animation_scale",
+                        "settings get global animator_duration_scale"
+                    ),
+                    "Read Brightness" to listOf(
+                        "settings get system screen_brightness"
+                    )
+                )
+            ),
+            shizuleJson(
+                id = "com.shizulu.test.echo_lab",
+                name = "Echo Lab",
+                version = "1.0.0",
+                description = "A tiny output-only shizule for confirming command execution and environment variables.",
+                actions = listOf(
+                    "Echo Test" to listOf(
+                        "echo Shizulu test OK",
+                        "echo module=\$SHIZULU_MODULE_ID",
+                        "date"
+                    )
+                )
+            )
+        )
+    }
+
+    private fun blankShizuleTemplate(): String {
+        return shizuleJson(
+            id = "com.example.my_shizule",
+            name = "My Shizule",
+            version = "1.0.0",
+            description = "Describe what this shizule does.",
+            actions = listOf(
+                "Run" to listOf(
+                    "echo Hello from Shizulu"
+                ),
+                "Restore" to listOf(
+                    "echo Restore action goes here"
+                )
+            )
+        )
+    }
+
+    private fun shizuleJson(
+        id: String,
+        name: String,
+        version: String,
+        description: String,
+        actions: List<Pair<String, List<String>>>
+    ): String {
+        return JSONObject().apply {
+            put("schema", 1)
+            put("id", id)
+            put("name", name)
+            put("version", version)
+            put("description", description)
+            put("actions", JSONArray().apply {
+                actions.forEachIndexed { index, action ->
+                    put(JSONObject().apply {
+                        put("id", action.first.lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "action_$index" })
+                        put("label", action.first)
+                        put("commands", JSONArray().apply {
+                            action.second.forEach { command ->
+                                put(JSONObject().apply { put("exec", command) })
+                            }
+                        })
+                    })
+                }
+            })
+        }.toString(2)
     }
 
     private fun dryRunAction(shizule: Shizule, action: ShizuleAction) {
