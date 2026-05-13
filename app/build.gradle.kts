@@ -24,6 +24,15 @@ android {
         buildConfigField("String", "GIT_SHA", "\"${gitSha.get()}\"")
     }
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("signing/shizulu-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildFeatures {
         aidl = true
         buildConfig = true

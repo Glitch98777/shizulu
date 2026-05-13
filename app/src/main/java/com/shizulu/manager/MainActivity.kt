@@ -2445,13 +2445,13 @@ class MainActivity : Activity() {
             val asset = assets.getJSONObject(index)
             val name = asset.optString("name")
             val url = asset.optString("browser_download_url")
-            if (name.endsWith(".apk", ignoreCase = true) && url.isNotBlank()) {
+            if (name.isShizuluManagerApkName() && url.isNotBlank()) {
                 apkName = name
                 apkUrl = url
                 break
             }
         }
-        require(apkUrl.isNotBlank()) { "Latest release has no APK asset." }
+        require(apkUrl.isNotBlank()) { "Latest release has no Shizulu manager APK asset." }
         val body = obj.optString("body")
         return GithubRelease(
             tag = obj.optString("tag_name", "latest"),
@@ -2503,8 +2503,21 @@ class MainActivity : Activity() {
             apk.outputStream().use { output -> input.copyTo(output) }
         }
         require(apk.length() > 0L) { "Downloaded APK is empty." }
+        validateUpdateApk(apk)
         appendLog("Update downloaded: ${apk.name} (${apk.length()} bytes)")
         return apk
+    }
+
+    private fun validateUpdateApk(apk: File) {
+        val info = packageManager.getPackageArchiveInfo(apk.absolutePath, 0)
+            ?: error("Downloaded file is not a valid APK.")
+        require(info.packageName == packageName) {
+            "Downloaded APK package was ${info.packageName}, expected $packageName."
+        }
+        val downloadedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+        require(downloadedVersion > BuildConfig.VERSION_CODE.toLong()) {
+            "Downloaded APK is not newer. Current=${BuildConfig.VERSION_CODE}, downloaded=$downloadedVersion."
+        }
     }
 
     private fun launchApkInstaller(apk: File, release: GithubRelease) {
@@ -2553,6 +2566,12 @@ class MainActivity : Activity() {
         if (latestRelease != null) return latestRelease
         val raw = settingsPrefs.getString(KEY_LATEST_RELEASE, null) ?: return null
         return runCatching { GithubRelease.fromJson(JSONObject(raw)) }.getOrNull()?.also { latestRelease = it }
+    }
+
+    private fun String.isShizuluManagerApkName(): Boolean {
+        return endsWith(".apk", ignoreCase = true) &&
+            startsWith("Shizulu-", ignoreCase = true) &&
+            !contains("Tester", ignoreCase = true)
     }
 
     private fun <T> HttpURLConnection.useResponse(block: (java.io.InputStream) -> T): T {
