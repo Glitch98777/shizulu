@@ -2136,19 +2136,13 @@ class NavIconView(
     }
 
     private fun drawTools(canvas: Canvas, w: Float, h: Float) {
-        val cx = w * 0.5f
-        val cy = h * 0.50f
-        canvas.drawCircle(cx, cy, w * 0.18f, paint)
-        canvas.drawCircle(cx, cy, w * 0.05f, fillPaint)
-        for (i in 0 until 8) {
-            val angle = Math.toRadians((i * 45).toDouble())
-            val inner = w * 0.25f
-            val outer = w * 0.34f
-            val x1 = cx + kotlin.math.cos(angle).toFloat() * inner
-            val y1 = cy + kotlin.math.sin(angle).toFloat() * inner
-            val x2 = cx + kotlin.math.cos(angle).toFloat() * outer
-            val y2 = cy + kotlin.math.sin(angle).toFloat() * outer
-            canvas.drawLine(x1, y1, x2, y2, paint)
-        }
+        canvas.drawLine(w * 0.28f, h * 0.78f, w * 0.72f, h * 0.30f, paint)
+        canvas.drawLine(w * 0.70f, h * 0.24f, w * 0.80f, h * 0.15f, paint)
+        canvas.drawLine(w * 0.76f, h * 0.30f, w * 0.85f, h * 0.20f, paint)
+
+        canvas.drawLine(w * 0.28f, h * 0.25f, w * 0.73f, h * 0.75f, paint)
+        rect.set(w * 0.18f, h * 0.15f, w * 0.36f, h * 0.32f)
+        canvas.drawRoundRect(rect, 3.5f, 3.5f, paint)
+        canvas.drawCircle(w * 0.77f, h * 0.80f, w * 0.06f, paint)
     }
 }
