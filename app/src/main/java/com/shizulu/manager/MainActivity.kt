@@ -342,40 +342,38 @@ class MainActivity : Activity() {
 
     private fun statusPanel(): View {
         return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(16))
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
             elevation = dp(1).toFloat()
 
-            statusTitle = TextView(context).apply {
-                textSize = 20f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(COLORS.ink)
-                includeFontPadding = false
-            }
-            addView(statusTitle)
-
-            statusSubtitle = TextView(context).apply {
-                textSize = 14f
-                setTextColor(COLORS.muted)
-                setPadding(0, dp(7), 0, dp(14))
-            }
-            addView(statusSubtitle)
-
             addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.VERTICAL
 
-                shizukuChip = chip("Shizuku")
-                permissionChip = chip("Permission")
-                serviceChip = chip("Service")
-                backendChip = chip("Backend")
+                statusTitle = TextView(context).apply {
+                    textSize = 16f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    includeFontPadding = false
+                }
+                addView(statusTitle)
 
-                addView(shizukuChip)
-                addView(permissionChip, rowGapParams())
-                addView(serviceChip, rowGapParams())
-                addView(backendChip, rowGapParams())
-            })
+                statusSubtitle = TextView(context).apply {
+                    textSize = 12f
+                    setTextColor(COLORS.muted)
+                    includeFontPadding = false
+                    setPadding(0, dp(3), 0, 0)
+                    maxLines = 1
+                }
+                addView(statusSubtitle)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+
+            backendChip = chip("Backend").apply {
+                minWidth = dp(92)
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+            }
+            addView(backendChip, LinearLayout.LayoutParams(-2, dp(34)).apply { leftMargin = dp(10) })
         }
     }
 
@@ -732,16 +730,16 @@ class MainActivity : Activity() {
             if (::statusSubtitle.isInitialized) {
                 statusSubtitle.text = if (wirelessMode) {
                     if (wirelessConfigured) {
-                        "Standalone Wireless ADB is selected. Shizules will use ADB privileges without Shizuku."
+                        "ADB backend selected"
                     } else {
-                        "Wireless ADB is selected. Add a pairing code and port in Tools to run shizules."
+                        "Pair in Tools to run shizules"
                     }
                 } else {
                     when {
-                        !binderAlive -> "Start Shizuku on the phone, then return here."
-                        !permissionGranted -> "Allow Shizulu so modules can use the shell identity."
-                        uid == null -> "Tap Grant Shizuku to connect the manager service."
-                        else -> "User service is bound as uid $uid. Shizules can run."
+                        !binderAlive -> "Start Shizuku to use this backend"
+                        !permissionGranted -> "Grant shell access"
+                        uid == null -> "Bind service to run shizules"
+                        else -> "Bound as uid $uid"
                     }
                 }
             }
@@ -755,7 +753,15 @@ class MainActivity : Activity() {
                 if (::permissionChip.isInitialized) setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
                 if (::serviceChip.isInitialized) setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
             }
-            if (::backendChip.isInitialized) setChip(backendChip, executionMode.label, executionMode == ExecutionMode.SHIZUKU || wirelessConfigured)
+            if (::backendChip.isInitialized) {
+                when {
+                    wirelessMode -> setChip(backendChip, if (wirelessConfigured) "Wireless ADB" else "Pair ADB", wirelessConfigured)
+                    uid != null -> setChip(backendChip, "Ready", true)
+                    !binderAlive -> setChip(backendChip, "Offline", false)
+                    !permissionGranted -> setChip(backendChip, "Needs grant", false)
+                    else -> setChip(backendChip, "Bind", false)
+                }
+            }
 
             if (::grantButton.isInitialized) {
                 grantButton.text = when {
