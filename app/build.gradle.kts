@@ -7,12 +7,17 @@ android {
     namespace = "com.shizulu.manager"
     compileSdk = 36
 
+    val gitSha = providers.exec {
+        commandLine("git", "rev-parse", "--short=12", "HEAD")
+    }.standardOutput.asText.map { it.trim() }.orElse("unknown")
+
     defaultConfig {
         applicationId = "com.shizulu.manager"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "GIT_SHA", "\"${gitSha.get()}\"")
     }
 
     buildFeatures {
@@ -50,6 +55,7 @@ dependencies {
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("com.flyfishxu:kadb:2.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.core:core:1.16.0")
     implementation("androidx.annotation:annotation:1.9.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }

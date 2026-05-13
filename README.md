@@ -18,6 +18,7 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 - Create custom profiles from installed shizule actions.
 - Export and restore JSON backups for installed shizules, custom profiles, dry-run state, and logs.
 - Persistent logs show imports, dry runs, command exits, and failures.
+- App updater checks GitHub releases, downloads newer APKs, and opens Android's installer.
 - Includes sample shizules for animation tuning, display comfort, conservative debloating, and Shizulu capability boosting.
 
 ## Shizule Format

@@ -30,9 +30,13 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import rikka.shizuku.Shizuku
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,6 +61,8 @@ class MainActivity : Activity() {
     private lateinit var moduleSummaryText: TextView
     private lateinit var profileSummaryText: TextView
     private lateinit var modeSummaryText: TextView
+    private lateinit var updaterStatusText: TextView
+    private lateinit var updaterButton: TextView
     private lateinit var profilesList: LinearLayout
     private lateinit var moduleList: LinearLayout
     private lateinit var contentHost: FrameLayout
@@ -68,6 +74,7 @@ class MainActivity : Activity() {
     private var dryRunEnabled = false
     private var executionMode = ExecutionMode.SHIZUKU
     private var currentPage = Page.HOME
+    private var latestRelease: GithubRelease? = null
 
     private val permissionListener =
         Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -454,6 +461,7 @@ class MainActivity : Activity() {
 
             addView(executionModePanel())
             addView(wirelessAdbPanel(), spacedParams(top = 10))
+            addView(updaterPanel(), spacedParams(top = 10))
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -521,6 +529,39 @@ class MainActivity : Activity() {
                 addView(compactButton("Open Settings", filled = false) { openDeveloperSettings() }, LinearLayout.LayoutParams(0, dp(42), 1f))
                 addView(compactButton("Configure", filled = true) { showWirelessAdbConfigDialog() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
                 addView(compactButton("Test", filled = false) { testWirelessAdbBackend() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+            })
+        }
+    }
+
+    private fun updaterPanel(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = "App updater"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            updaterStatusText = TextView(context).apply {
+                text = "Current build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            }
+            addView(updaterStatusText)
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("Check", filled = false) { checkForUpdates() }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                updaterButton = compactButton("Update", filled = true) { installLatestUpdate() }.apply {
+                    isEnabled = false
+                    alpha = 0.45f
+                }
+                addView(updaterButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
             })
         }
     }
@@ -1222,6 +1263,171 @@ class MainActivity : Activity() {
             }
     }
 
+    private fun checkForUpdates() {
+        if (!::updaterStatusText.isInitialized) return
+        latestRelease = null
+        setUpdaterButton(false)
+        updaterStatusText.text = "Checking GitHub releases..."
+        appendLog("Update check started")
+
+        executor.execute {
+            runCatching { fetchLatestRelease() }
+                .onSuccess { release ->
+                    latestRelease = release
+                    val updateAvailable = release.isNewerThanCurrent()
+                    appendLog("Update check ${if (updateAvailable) "found ${release.tag}" else "current"}")
+                    mainHandler.post {
+                        if (updateAvailable) {
+                            updaterStatusText.text = "Update available: ${release.tag}\nCurrent: ${BuildConfig.GIT_SHA}\nLatest: ${release.commitSha ?: "unknown commit"}"
+                            setUpdaterButton(true)
+                        } else {
+                            updaterStatusText.text = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+                            setUpdaterButton(false)
+                        }
+                    }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Update check failed: $message")
+                    mainHandler.post {
+                        updaterStatusText.text = "Update check failed: $message"
+                        setUpdaterButton(false)
+                    }
+                }
+        }
+    }
+
+    private fun installLatestUpdate() {
+        val release = latestRelease
+        if (release == null || !release.isNewerThanCurrent()) {
+            Toast.makeText(this, "Check for updates first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            appendLog("Update install blocked: install unknown apps permission needed")
+            Toast.makeText(this, "Allow Shizulu to install updates, then tap Update again.", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            return
+        }
+
+        updaterStatusText.text = "Downloading ${release.tag}..."
+        setUpdaterButton(false)
+        appendLog("Update download started: ${release.tag}")
+
+        executor.execute {
+            runCatching {
+                val apk = downloadUpdateApk(release)
+                mainHandler.post { launchApkInstaller(apk, release) }
+            }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Update download failed: $message")
+                    mainHandler.post {
+                        updaterStatusText.text = "Update download failed: $message"
+                        setUpdaterButton(true)
+                    }
+                }
+        }
+    }
+
+    private fun fetchLatestRelease(): GithubRelease {
+        val json = httpGet(GITHUB_LATEST_RELEASE_URL)
+        val obj = JSONObject(json)
+        val assets = obj.optJSONArray("assets") ?: JSONArray()
+        var apkUrl = ""
+        var apkName = ""
+        for (index in 0 until assets.length()) {
+            val asset = assets.getJSONObject(index)
+            val name = asset.optString("name")
+            val url = asset.optString("browser_download_url")
+            if (name.endsWith(".apk", ignoreCase = true) && url.isNotBlank()) {
+                apkName = name
+                apkUrl = url
+                break
+            }
+        }
+        require(apkUrl.isNotBlank()) { "Latest release has no APK asset." }
+        val body = obj.optString("body")
+        return GithubRelease(
+            tag = obj.optString("tag_name", "latest"),
+            name = obj.optString("name", "Latest release"),
+            commitSha = body.lineSequence()
+                .firstOrNull { it.trim().startsWith("Commit:", ignoreCase = true) }
+                ?.substringAfter(':')
+                ?.trim()
+                ?.takeIf { it.isNotBlank() },
+            apkName = apkName,
+            apkUrl = apkUrl
+        )
+    }
+
+    private fun httpGet(url: String): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("User-Agent", "Shizulu/${BuildConfig.VERSION_NAME}")
+        }
+        return connection.useResponse { stream ->
+            stream.bufferedReader(Charsets.UTF_8).readText()
+        }
+    }
+
+    private fun downloadUpdateApk(release: GithubRelease): File {
+        val updatesDir = File(cacheDir, "updates").apply { mkdirs() }
+        val apk = File(updatesDir, release.apkName.ifBlank { "Shizulu-${release.tag}.apk" })
+        val connection = (URL(release.apkUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 120_000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "Shizulu/${BuildConfig.VERSION_NAME}")
+        }
+        connection.useResponse { input ->
+            apk.outputStream().use { output -> input.copyTo(output) }
+        }
+        require(apk.length() > 0L) { "Downloaded APK is empty." }
+        appendLog("Update downloaded: ${apk.name} (${apk.length()} bytes)")
+        return apk
+    }
+
+    private fun launchApkInstaller(apk: File, release: GithubRelease) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", apk)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        appendLog("Launching updater installer: ${release.tag}")
+        updaterStatusText.text = "Downloaded ${release.tag}. Finish the Android installer to update."
+        startActivity(intent)
+    }
+
+    private fun setUpdaterButton(enabled: Boolean) {
+        if (!::updaterButton.isInitialized) return
+        updaterButton.isEnabled = enabled
+        updaterButton.alpha = if (enabled) 1f else 0.45f
+    }
+
+    private fun <T> HttpURLConnection.useResponse(block: (java.io.InputStream) -> T): T {
+        return try {
+            val code = responseCode
+            val stream = if (code in 200..299) inputStream else errorStream
+            val body = stream.use(block)
+            if (code !in 200..299) error("HTTP $code")
+            body
+        } finally {
+            disconnect()
+        }
+    }
+
+    private fun GithubRelease.isNewerThanCurrent(): Boolean {
+        val latest = commitSha ?: return tag != BuildConfig.VERSION_NAME
+        val current = BuildConfig.GIT_SHA
+        return !latest.startsWith(current, ignoreCase = true) && !current.startsWith(latest, ignoreCase = true)
+    }
+
     private fun showOutput(title: String, output: String) {
         android.app.AlertDialog.Builder(this)
             .setTitle(title)
@@ -1374,6 +1580,7 @@ class MainActivity : Activity() {
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val MAX_LOG_LINES = 160
+        private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
 
         private val PROFILES = listOf(
             ShizuluProfile(
@@ -1423,6 +1630,14 @@ data class ProfileStep(
 data class ProfileChoice(
     val label: String,
     val step: ProfileStep
+)
+
+data class GithubRelease(
+    val tag: String,
+    val name: String,
+    val commitSha: String?,
+    val apkName: String,
+    val apkUrl: String
 )
 
 enum class Page {
