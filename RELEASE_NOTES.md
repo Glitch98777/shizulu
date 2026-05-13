@@ -13,6 +13,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Wireless ADB reconnect now tries existing trust and cached connect ports before using a fresh pairing code.
 - Wireless ADB Test now auto-scans likely local connect ports, reports open ports, and tries real ADB handshakes against them.
 - Saving a new Wireless ADB port now refreshes the cached connect port instead of reusing an old one.
+- Wireless ADB Auto Repair clears stale cached ports and reruns the reconnect/discovery/scan flow.
 - Persistent ADB tools for foreground keep-alive and battery optimization exemption.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

@@ -547,6 +547,7 @@ class MainActivity : Activity() {
                 addView(compactButton("Configure", filled = true) { showWirelessAdbConfigDialog() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
                 addView(compactButton("Test", filled = false) { testWirelessAdbBackend() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
             })
+            addView(compactButton("Auto Repair", filled = false) { autoRepairWirelessAdbBackend() }, spacedParams(top = 10))
         }
     }
 
@@ -1292,6 +1293,45 @@ class MainActivity : Activity() {
                     mainHandler.post { showOutput("Wireless ADB", "Failed: $message") }
                 }
         }
+    }
+
+    private fun autoRepairWirelessAdbBackend() {
+        val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
+        val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
+        if (pairingCode.isBlank() || port <= 0) {
+            appendLog("Wireless ADB auto repair: not configured")
+            showOutput(
+                "Wireless ADB Auto Repair",
+                "Pairing required.\n\nSave a fresh pairing code and port first, then run Auto Repair."
+            )
+            return
+        }
+
+        settingsPrefs.edit().remove(KEY_ADB_CONNECT_PORT).apply()
+        appendLog("Wireless ADB auto repair started: cleared cached connect port; code=${pairingCode.maskPairingCode()} port=$port")
+        Toast.makeText(this, "Repairing Wireless ADB...", Toast.LENGTH_SHORT).show()
+        Thread {
+            runCatching {
+                WirelessAdbRunner(applicationContext).test(pairingCode, port)
+            }.onSuccess { result ->
+                appendLog("Wireless ADB auto repair succeeded")
+                mainHandler.post {
+                    showOutput(
+                        "Wireless ADB Auto Repair",
+                        "Cleared stale cache and reconnected.\n\n${result.output}"
+                    )
+                }
+            }.onFailure {
+                val message = it.message ?: it.javaClass.simpleName
+                appendLog("Wireless ADB auto repair failed: $message")
+                mainHandler.post {
+                    showOutput(
+                        "Wireless ADB Auto Repair",
+                        "Failed after clearing stale cache.\n\n$message"
+                    )
+                }
+            }
+        }.start()
     }
 
     private fun runAction(shizule: Shizule, action: ShizuleAction) {
