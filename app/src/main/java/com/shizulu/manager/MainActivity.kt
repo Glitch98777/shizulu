@@ -1234,22 +1234,100 @@ class MainActivity : Activity() {
     }
 
     private fun showSuBridgeMenu() {
+        val enabled = settingsPrefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)
         android.app.AlertDialog.Builder(this)
             .setTitle("SU Bridge")
-            .setMessage("Shizulu can provide a shell-privilege su-compatible bridge for shizules and tools. Android will not let a normal APK hijack other apps' real /system/bin/su calls without root or app patching.")
-            .setItems(arrayOf("Install bridge shizule", "Install /data/local/tmp bridge script", "Bridge status")) { _, which ->
+            .setMessage("Shizulu now exposes a real opt-in bridge endpoint at content://$packageName.su for apps/modules that integrate with it. Normal APKs still cannot replace Android's system su path without root/system access.")
+            .setItems(arrayOf(if (enabled) "Disable bridge endpoint" else "Enable bridge endpoint", "Run su -c command", "Self-test", "Install bridge shizule", "Install /data/local/tmp bridge script", "Bridge status", "Bridge API sample")) { _, which ->
                 when (which) {
-                    0 -> installSuBridgeShizule()
-                    1 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    2 -> runPowerCommand(
-                        "SU Bridge Status",
-                        "id; echo SHIZULU=\$SHIZULU; echo API=\$SHIZULU_API_VERSION; echo MODULE=\$SHIZULU_MODULE_ID; if [ -x /data/local/tmp/shizulu-su ]; then /data/local/tmp/shizulu-su -c 'id'; else echo bridge script missing; fi",
-                        "com.shizulu.su_bridge"
-                    )
+                    0 -> setSuBridgeEndpointEnabled(!enabled)
+                    1 -> showSuBridgeCommandDialog()
+                    2 -> runSuBridgeSelfTest()
+                    3 -> installSuBridgeShizule()
+                    4 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    5 -> showSuBridgeStatus()
+                    6 -> showSuBridgeApiSample()
                 }
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun setSuBridgeEndpointEnabled(enabled: Boolean) {
+        settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, enabled).apply()
+        appendLog("SU Bridge endpoint ${if (enabled) "enabled" else "disabled"}")
+        Toast.makeText(this, if (enabled) "SU Bridge endpoint enabled" else "SU Bridge endpoint disabled", Toast.LENGTH_SHORT).show()
+        if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
+    }
+
+    private fun showSuBridgeCommandDialog() {
+        promptForLines(
+            title = "Run SU Command",
+            message = "Enter a command. Shizulu will run it like su -c through the selected backend.",
+            initial = "id"
+        ) { lines ->
+            val command = lines.joinToString("\n").trim()
+            if (command.isBlank()) {
+                Toast.makeText(this, "Command is required.", Toast.LENGTH_SHORT).show()
+            } else {
+                runPowerCommand("SU Bridge", command, "com.shizulu.su_bridge")
+            }
+        }
+    }
+
+    private fun showSuBridgeStatus() {
+        runCatching { SuBridgeExecutor(this).status() }
+            .onSuccess { status ->
+                showOutput(
+                    "SU Bridge Status",
+                    "$status\nProvider: content://$packageName.su\nPermission: com.shizulu.manager.permission.SU_BRIDGE"
+                )
+            }
+            .onFailure {
+                showOutput("SU Bridge Status", it.message ?: it.javaClass.simpleName)
+            }
+    }
+
+    private fun showSuBridgeApiSample() {
+        showOutput(
+            "SU Bridge API",
+            """
+            Authority:
+            content://$packageName.su
+
+            Permission apps must request:
+            com.shizulu.manager.permission.SU_BRIDGE
+
+            Provider calls:
+            call("status", null, null)
+            call("exec", null, Bundle().apply { putString("command", "id") })
+            call("su-c", "su -c id", null)
+
+            Returned Bundle:
+            success: Boolean
+            message: String
+            output: String
+            """.trimIndent()
+        )
+    }
+
+    private fun runSuBridgeSelfTest() {
+        if (!settingsPrefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)) {
+            showOutput("SU Bridge Self-Test", "Enable the SU Bridge endpoint first.")
+            return
+        }
+        executor.execute {
+            runCatching { SuBridgeExecutor(applicationContext).execute("com.shizulu.su_bridge.selftest", "id; echo bridge=ok") }
+                .onSuccess { output ->
+                    appendLog("SU Bridge self-test succeeded")
+                    mainHandler.post { showOutput("SU Bridge Self-Test", output) }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("SU Bridge self-test failed: $message")
+                    mainHandler.post { showOutput("SU Bridge Self-Test", "Failed: $message") }
+                }
+        }
     }
 
     private fun installSuBridgeShizule() {
@@ -1849,7 +1927,7 @@ class MainActivity : Activity() {
             "fi",
             "exec /system/bin/sh",
             "EOF",
-            "chmod 700 /data/local/tmp/shizulu-su",
+            "chmod 755 /data/local/tmp/shizulu-su",
             "echo installed /data/local/tmp/shizulu-su"
         ).joinToString("\n")
     }
@@ -2595,6 +2673,7 @@ class MainActivity : Activity() {
         private const val KEY_UPDATER_STATUS = "updater_status"
         private const val KEY_LATEST_RELEASE = "latest_release"
         private const val KEY_WIRELESS_ADB_KEEP_ALIVE = "wireless_adb_keep_alive"
+        private const val KEY_SU_BRIDGE_ENABLED = "su_bridge_enabled"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"

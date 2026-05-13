@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Shizulu</string>
+    <string name="su_bridge_permission_label">Use Shizulu SU Bridge</string>
+    <string name="su_bridge_permission_description">Allows an app to ask Shizulu to run shell-privileged commands through Shizuku or Wireless ADB.</string>
 </resources>
