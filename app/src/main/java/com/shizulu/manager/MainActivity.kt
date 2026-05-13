@@ -478,7 +478,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Shizuku is fully supported now. Wireless ADB is available as an experimental backend surface while the native pairing/protocol layer is being added."
+                text = "Shizuku is fully supported. Wireless ADB can now pair, discover the local ADB service, and run shizules without Shizuku."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -510,7 +510,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Use Android 11+ Wireless debugging. Save the pairing code and port here; Shizulu will route modules through this backend once the native ADB protocol layer is bundled."
+                text = "Use Android 11+ Wireless debugging. Save the pairing code and port here; Shizulu will pair, find the connect service, and run modules over ADB."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -936,13 +936,28 @@ class MainActivity : Activity() {
     private fun testWirelessAdbBackend() {
         val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
         val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
-        val message = if (pairingCode.isNotBlank() && port > 0) {
-            "Wireless ADB config is saved with pairing code ${pairingCode.maskPairingCode()} and port $port.\n\nNative TLS pairing and shell execution are not bundled in this build yet, so modules still need Shizuku mode for real execution."
-        } else {
-            "Wireless ADB is not configured yet. Open Wireless debugging, choose Pair device with pairing code, then save the code and port here."
+        if (pairingCode.isBlank() || port <= 0) {
+            appendLog("Wireless ADB test: not configured")
+            showOutput("Wireless ADB", "Wireless ADB is not configured yet. Open Wireless debugging, choose Pair device with pairing code, then save the code and port here.")
+            return
         }
-        appendLog("Wireless ADB test: ${if (pairingCode.isNotBlank() && port > 0) "configured" else "not configured"}")
-        showOutput("Wireless ADB", message)
+
+        appendLog("Wireless ADB test started: code=${pairingCode.maskPairingCode()} port=$port")
+        Toast.makeText(this, "Testing Wireless ADB...", Toast.LENGTH_SHORT).show()
+        executor.execute {
+            runCatching {
+                WirelessAdbRunner(applicationContext).test(pairingCode, port)
+            }
+                .onSuccess { result ->
+                    appendLog("Wireless ADB test succeeded")
+                    mainHandler.post { showOutput("Wireless ADB", result.output) }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Wireless ADB test failed: $message")
+                    mainHandler.post { showOutput("Wireless ADB", "Failed: $message") }
+                }
+        }
     }
 
     private fun runAction(shizule: Shizule, action: ShizuleAction) {
@@ -998,21 +1013,31 @@ class MainActivity : Activity() {
     private fun runWirelessAdbAction(shizule: Shizule, action: ShizuleAction) {
         val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
         val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
-        val preview = buildString {
-            append("Wireless ADB backend selected.\n\n")
-            if (pairingCode.isBlank() || port <= 0) {
-                append("No pairing code and port are configured. Open Tools > Wireless ADB > Configure.\n\n")
-            } else {
-                append("Configured pairing: code ").append(pairingCode.maskPairingCode())
-                    .append(" on port ").append(port).append("\n\n")
-            }
-            append("Native ADB TLS pairing/shell execution is not bundled in this build yet, so these commands were not executed:\n\n")
-            action.commands.forEachIndexed { index, command ->
-                append(index + 1).append(". ").append(command.exec).append('\n')
-            }
+        if (pairingCode.isBlank() || port <= 0) {
+            appendLog("Wireless ADB blocked ${shizule.name}/${action.label}: missing pairing code or port")
+            showOutput("${shizule.name} Wireless ADB", "No pairing code and port are configured. Open Tools > Wireless ADB > Configure.")
+            return
         }
-        appendLog("Wireless ADB blocked ${shizule.name}/${action.label}: native protocol layer not bundled")
-        showOutput("${shizule.name} Wireless ADB", preview)
+
+        appendLog("Wireless ADB started ${shizule.name}/${action.label} (${action.commands.size} command(s))")
+        executor.execute {
+            runCatching {
+                WirelessAdbRunner(applicationContext).run(shizule.id, action, pairingCode, port)
+            }
+                .onSuccess { result ->
+                    val failed = result.output.lineSequence().any { it.startsWith("exit=") && it != "exit=0" }
+                    appendLog("${if (failed) "Wireless ADB finished with failures" else "Wireless ADB finished successfully"}: ${shizule.name}/${action.label}")
+                    mainHandler.post {
+                        Toast.makeText(this, "Wireless ADB ran ${action.commands.size} command(s)", Toast.LENGTH_SHORT).show()
+                        showOutput("${shizule.name} Wireless ADB", result.output)
+                    }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Wireless ADB failed ${shizule.name}/${action.label}: $message")
+                    mainHandler.post { showOutput("${shizule.name} Wireless ADB", "Failed: $message") }
+                }
+        }
     }
 
     private fun String.maskPairingCode(): String {

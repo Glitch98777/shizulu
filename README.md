@@ -98,18 +98,19 @@ Shizulu does not provide root, kernel access, SELinux bypasses, boot image chang
 Shizulu currently has two backend modes:
 
 - `Shizuku`: fully supported. Shizulu binds a Shizuku `UserService` and runs shizule commands with Shizuku's ADB/shell identity.
-- `Wireless ADB`: experimental app-side support. The UI stores the Wireless debugging pairing code and port, then routes module execution to this backend, but native TLS pairing and shell execution are not bundled in this build yet.
+- `Wireless ADB`: standalone mode. The app stores the Wireless debugging pairing code and port, pairs with local `adbd`, discovers the `_adb-tls-connect` service, and executes shizule commands over ADB without Shizuku.
 
-The Wireless ADB implementation is designed around Android 11+ Wireless debugging, mDNS service discovery, ADB key pairing, and ADB shell execution. Until that protocol layer lands, use Shizuku mode for real module execution.
+Wireless ADB mode requires Android 11+ Wireless debugging. Open the separate Android Settings app, choose `Pair device with pairing code`, enter the code and port in Shizulu, then run a shizule with the Wireless ADB backend selected.
 
 ## Build From Source
 
-Open this folder in Android Studio and build the `app` module. You need Android SDK 35 and internet access for Gradle dependencies.
+Open this folder in Android Studio and build the `app` module. You need Android SDK 36 and internet access for Gradle dependencies.
 
-The project uses the official Shizuku API artifacts:
+The project uses the official Shizuku API artifacts plus Kadb for standalone Wireless ADB:
 
 - `dev.rikka.shizuku:api:13.1.5`
 - `dev.rikka.shizuku:provider:13.1.5`
+- `com.flyfishxu:kadb:2.1.1`
 
 ## Releases
 
@@ -117,7 +118,7 @@ Every successful push build on `main` publishes a normal GitHub release with the
 
 ## Try It
 
-1. Install and start Shizuku on the phone.
+1. Install and start Shizuku on the phone, or enable Wireless debugging and pair Shizulu from the Tools tab.
 2. Install Shizulu.
 3. Tap `Grant Shizuku`.
 4. Tap `Import .json`.
