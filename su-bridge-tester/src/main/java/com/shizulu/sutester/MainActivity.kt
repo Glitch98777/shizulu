@@ -44,6 +44,7 @@ class MainActivity : Activity() {
                 addView(button("Bridge Status") { callBridge("status", null, null) }, spaced())
                 addView(button("Bridge exec: id") { callBridge("exec", null, mapOf("command" to "id; echo bridge_exec=ok")) }, spaced())
                 addView(button("Bridge su -c id") { callBridge("su-c", "su -c 'id; echo bridge_su_c=ok'", null) }, spaced())
+                addView(button("Custom path /data/local/tmp/su") { runCustomPathSu() }, spaced())
                 addView(button("Traditional su -c id") { runTraditionalSu() }, spaced())
                 addView(output, spaced(top = 16))
             })
@@ -102,6 +103,22 @@ class MainActivity : Activity() {
                 "traditional su exit=$code\n$text"
             }.getOrElse {
                 "traditional su failed: ${it.javaClass.simpleName}: ${it.message}"
+            }
+            runOnUiThread { write(result) }
+        }
+    }
+
+    private fun runCustomPathSu() {
+        executor.execute {
+            val result = runCatching {
+                val process = ProcessBuilder("/data/local/tmp/su", "-c", "id; echo custom_path_su=ok")
+                    .redirectErrorStream(true)
+                    .start()
+                val text = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
+                val code = process.waitFor()
+                "/data/local/tmp/su exit=$code\n$text"
+            }.getOrElse {
+                "/data/local/tmp/su failed: ${it.javaClass.simpleName}: ${it.message}\nInstall the Shizulu SU Bridge script first."
             }
             runOnUiThread { write(result) }
         }

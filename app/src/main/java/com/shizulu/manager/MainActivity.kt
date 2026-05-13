@@ -1250,7 +1250,7 @@ class MainActivity : Activity() {
                     7 -> showSuBridgeApiSample()
                 }
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("OK", null)
             .show()
     }
 
@@ -1309,6 +1309,12 @@ class MainActivity : Activity() {
             call("status", null, null)
             call("exec", null, Bundle().apply { putString("command", "id") })
             call("su-c", "su -c id", null)
+
+            Compatibility shim:
+            Run "Install /data/local/tmp bridge script", then point compatible apps to:
+            /data/local/tmp/su
+
+            Hardcoded /system/bin/su calls cannot be intercepted without root/system access.
 
             Returned Bundle:
             success: Boolean
@@ -1905,11 +1911,11 @@ class MainActivity : Activity() {
             id = "com.shizulu.su_bridge",
             name = "SU Bridge",
             version = "1.0.0",
-            description = "Shell-level su compatibility helpers for Shizulu. This is not true system root for arbitrary apps.",
+            description = "Shell-level su compatibility helpers for Shizulu-aware apps and apps that support a custom su path.",
             actions = listOf(
                 "Bridge Status" to listOf(
                     "id; echo SHIZULU=\$SHIZULU; echo API=\$SHIZULU_API_VERSION; echo MODULE=\$SHIZULU_MODULE_ID",
-                    "if [ -x /data/local/tmp/shizulu-su ]; then /data/local/tmp/shizulu-su -c 'id'; else echo bridge script missing; fi"
+                    "if [ -x /data/local/tmp/su ]; then /data/local/tmp/su -c 'id; echo shim=ok'; else echo /data/local/tmp/su missing; fi"
                 ),
                 "Install Bridge Script" to listOf(
                     suBridgeInstallCommand()
@@ -1928,17 +1934,32 @@ class MainActivity : Activity() {
         return listOf(
             "cat > /data/local/tmp/shizulu-su <<'EOF'",
             "#!/system/bin/sh",
-            "if [ \"\$1\" = \"-c\" ]; then",
+            "uri='content://com.shizulu.manager.su'",
+            "if [ \"\$1\" = \"-v\" ] || [ \"\$1\" = \"--version\" ]; then",
+            "  echo 'Shizulu SU Bridge shim 1.1'",
+            "  exit 0",
+            "fi",
+            "if [ \"\$1\" = \"-h\" ] || [ \"\$1\" = \"--help\" ]; then",
+            "  echo 'usage: su [-c command]'",
+            "  exit 0",
+            "fi",
+            "if [ \"\$1\" = \"-c\" ] || [ \"\$1\" = \"--command\" ]; then",
             "  shift",
-            "  exec /system/bin/sh -c \"\$*\"",
+            "  command=\"\$*\"",
+            "else",
+            "  command=\"\$*\"",
             "fi",
-            "if [ \"\$#\" -gt 0 ]; then",
-            "  exec /system/bin/sh \"\$@\"",
+            "if [ -z \"\$command\" ]; then",
+            "  echo 'Shizulu SU Bridge: interactive shells cannot be proxied without root.'",
+            "  exit 1",
             "fi",
-            "exec /system/bin/sh",
+            "exec /system/bin/cmd content call --uri \"\$uri\" --method su-c --arg \"su -c \$command\"",
             "EOF",
-            "chmod 755 /data/local/tmp/shizulu-su",
-            "echo installed /data/local/tmp/shizulu-su"
+            "cp /data/local/tmp/shizulu-su /data/local/tmp/su",
+            "chmod 755 /data/local/tmp/shizulu-su /data/local/tmp/su",
+            "echo installed /data/local/tmp/shizulu-su",
+            "echo installed /data/local/tmp/su",
+            "echo compatible apps can use /data/local/tmp/su as their custom su path"
         ).joinToString("\n")
     }
 

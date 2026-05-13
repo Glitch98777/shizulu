@@ -20,6 +20,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Rootless Power Tools add a shell-level SU Bridge, RRO overlay controls, Advanced AppOps, package manipulation, and a faster boot reconnect loop.
 - SU Bridge now has a real opt-in provider endpoint, self-test, and su-c command runner for apps/modules that intentionally integrate with Shizulu.
 - SU Bridge can now run Max ADB Elevation to grant Shizulu all shell-accessible permissions, appops, and battery whitelist allowances.
+- SU Bridge popup uses OK, and the bridge script now installs a /data/local/tmp/su compatibility shim for apps that support custom su paths.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
 - Dark mode now uses a classic charcoal-gray palette instead of near-black AMOLED styling.

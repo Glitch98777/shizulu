@@ -29,7 +29,8 @@ class SuBridgeProvider : ContentProvider() {
             }
             METHOD_SU_C -> {
                 if (!enabled) return bridgeBundle(false, "SU Bridge endpoint is disabled in Shizulu.", "")
-                val command = parseSuCommand(arg.orEmpty())
+                val raw = extras?.getString(EXTRA_COMMAND) ?: arg.orEmpty()
+                val command = parseSuCommand(raw)
                     ?: return bridgeBundle(false, "Use su -c <command>.", "")
                 val moduleId = extras?.getString(EXTRA_MODULE_ID).orEmpty().ifBlank { DEFAULT_MODULE_ID }
                 runCatching { executor.execute(moduleId, command) }
@@ -60,8 +61,13 @@ class SuBridgeProvider : ContentProvider() {
         val trimmed = raw.trim()
         if (!trimmed.startsWith("su")) return null
         val afterSu = trimmed.removePrefix("su").trimStart()
-        if (!afterSu.startsWith("-c")) return null
-        return afterSu.removePrefix("-c").trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
+        val command = when {
+            afterSu.startsWith("-c ") -> afterSu.removePrefix("-c")
+            afterSu == "-c" -> ""
+            afterSu.startsWith("--command ") -> afterSu.removePrefix("--command")
+            else -> return null
+        }
+        return command.trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
     }
 
     private fun String.trimMatchingQuotes(): String {
