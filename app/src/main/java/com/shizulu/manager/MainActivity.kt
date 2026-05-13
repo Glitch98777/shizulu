@@ -282,7 +282,7 @@ class MainActivity : Activity() {
     }
 
     private fun setNavState(view: LinearLayout, selected: Boolean) {
-        val color = if (selected) COLORS.primary else COLORS.muted
+        val color = if (selected) COLORS.ink else COLORS.muted
         for (index in 0 until view.childCount) {
             when (val child = view.getChildAt(index)) {
                 is TextView -> child.setTextColor(color)
