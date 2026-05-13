@@ -11,7 +11,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Wireless ADB mode now pairs with local `adbd`, discovers the connect service with mDNS, and executes shizule commands without Shizuku.
 - Persistent ADB tools for foreground keep-alive and battery optimization exemption.
 - Developer Options opens as a separate Android Settings task.
-- Appearance settings in Tools for Light/Dark mode and accent themes.
+- Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
 - Dry Run mode to preview/log commands without modifying the device.
 - Profiles for grouped module actions:
   - Comfort Setup

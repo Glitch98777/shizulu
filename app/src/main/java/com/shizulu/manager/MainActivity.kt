@@ -162,6 +162,7 @@ class MainActivity : Activity() {
 
     private fun buildUi() {
         tuneWindow()
+        val targetPage = currentPage
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(COLORS.background)
@@ -178,7 +179,7 @@ class MainActivity : Activity() {
         root.addView(bottomNav())
 
         setContentView(root)
-        showPage(Page.HOME)
+        showPage(targetPage)
     }
 
     private fun showPage(page: Page) {
@@ -222,6 +223,11 @@ class MainActivity : Activity() {
             }
             Page.TOOLS -> {
                 content.addView(sectionTitle("Tools"), spacedParams(top = 8))
+                content.addView(executionModePanel(), spacedParams(top = 10))
+                content.addView(wirelessAdbPanel(), spacedParams(top = 10))
+                content.addView(persistencePanel(), spacedParams(top = 10))
+                content.addView(updaterPanel(), spacedParams(top = 10))
+                content.addView(appearancePanel(), spacedParams(top = 10))
                 content.addView(logsFooter(), spacedParams(top = 10))
             }
         }
@@ -473,11 +479,6 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
 
-            addView(executionModePanel())
-            addView(wirelessAdbPanel(), spacedParams(top = 10))
-            addView(persistencePanel(), spacedParams(top = 10))
-            addView(updaterPanel(), spacedParams(top = 10))
-            addView(appearancePanel(), spacedParams(top = 10))
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -640,7 +641,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Choose a light or dark manager theme and a Shizulu accent color."
+                text = "Choose light or dark mode and an optional accent color."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -667,10 +668,20 @@ class MainActivity : Activity() {
             })
 
             addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                AccentTheme.entries.forEachIndexed { index, theme ->
-                    addView(themeSwatch(theme, theme == accent), LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        if (index > 0) leftMargin = dp(8)
+                orientation = LinearLayout.VERTICAL
+                AccentTheme.entries.chunked(3).forEachIndexed { rowIndex, row ->
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        row.forEachIndexed { index, theme ->
+                            addView(themeSwatch(theme, theme == accent), LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                                if (index > 0) leftMargin = dp(8)
+                            })
+                        }
+                        repeat(3 - row.size) {
+                            addView(View(context), LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(8) })
+                        }
+                    }, LinearLayout.LayoutParams(-1, dp(44)).apply {
+                        if (rowIndex > 0) topMargin = dp(8)
                     })
                 }
             })
@@ -700,26 +711,30 @@ class MainActivity : Activity() {
             val permissionGranted = binderAlive && hasShizukuPermission()
             val uid = service?.let { runCatching { it.uid }.getOrNull() }
 
-            statusTitle.text = when {
-                !binderAlive -> "Shizuku is not connected"
-                !permissionGranted -> "Permission needed"
-                uid == null -> "Ready to bind service"
-                else -> "Shizulu is ready"
+            if (::statusTitle.isInitialized) {
+                statusTitle.text = when {
+                    !binderAlive -> "Shizuku is not connected"
+                    !permissionGranted -> "Permission needed"
+                    uid == null -> "Ready to bind service"
+                    else -> "Shizulu is ready"
+                }
             }
 
-            statusSubtitle.text = when {
-                !binderAlive -> "Start Shizuku on the phone, then return here."
-                !permissionGranted -> "Allow Shizulu so modules can use the shell identity."
-                uid == null -> "Tap Grant Shizuku to connect the manager service."
-                else -> "User service is bound as uid $uid. Shizules can run."
+            if (::statusSubtitle.isInitialized) {
+                statusSubtitle.text = when {
+                    !binderAlive -> "Start Shizuku on the phone, then return here."
+                    !permissionGranted -> "Allow Shizulu so modules can use the shell identity."
+                    uid == null -> "Tap Grant Shizuku to connect the manager service."
+                    else -> "User service is bound as uid $uid. Shizules can run."
+                }
             }
 
-            setChip(shizukuChip, if (binderAlive) "Shizuku running" else "Shizuku offline", binderAlive)
-            setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
-            setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
-            setChip(backendChip, executionMode.label, executionMode == ExecutionMode.SHIZUKU || wirelessAdbConfigured())
+            if (::shizukuChip.isInitialized) setChip(shizukuChip, if (binderAlive) "Shizuku running" else "Shizuku offline", binderAlive)
+            if (::permissionChip.isInitialized) setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
+            if (::serviceChip.isInitialized) setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
+            if (::backendChip.isInitialized) setChip(backendChip, executionMode.label, executionMode == ExecutionMode.SHIZUKU || wirelessAdbConfigured())
 
-            grantButton.text = if (permissionGranted) "Bind service" else "Grant Shizuku"
+            if (::grantButton.isInitialized) grantButton.text = if (permissionGranted) "Bind service" else "Grant Shizuku"
         }
     }
 
@@ -1443,7 +1458,7 @@ class MainActivity : Activity() {
                 .putBoolean(KEY_DRY_RUN, backup.optBoolean("dryRun", dryRunEnabled))
                 .putString(KEY_CUSTOM_PROFILES, customProfiles.toString())
                 .putString(KEY_APPEARANCE_MODE, backup.optString("appearanceMode", AppearanceMode.LIGHT.name))
-                .putString(KEY_ACCENT_THEME, backup.optString("accentTheme", AccentTheme.BLUE.name))
+                .putString(KEY_ACCENT_THEME, backup.optString("accentTheme", AccentTheme.DEFAULT.name))
                 .apply()
             dryRunEnabled = settingsPrefs.getBoolean(KEY_DRY_RUN, false)
             applyThemeFromPrefs()
@@ -1793,7 +1808,7 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private object COLORS {
-        var palette = AccentTheme.BLUE.palette(AppearanceMode.LIGHT)
+        var palette = AccentTheme.DEFAULT.palette(AppearanceMode.LIGHT)
         val dark get() = palette.dark
         val background get() = palette.background
         val surface get() = palette.surface
@@ -1963,6 +1978,7 @@ enum class AppearanceMode(val label: String) {
 }
 
 enum class AccentTheme(val label: String, private val lightPrimary: Int, private val darkPrimary: Int) {
+    DEFAULT("Default", 0xFF475569.toInt(), 0xFFE2E8F0.toInt()),
     BLUE("Blue", 0xFF3A7DFF.toInt(), 0xFF7BA7FF.toInt()),
     JADE("Jade", 0xFF0F8B6F.toInt(), 0xFF4DD6B3.toInt()),
     VIOLET("Violet", 0xFF7C3AED.toInt(), 0xFFA78BFA.toInt()),
@@ -1994,7 +2010,7 @@ enum class AccentTheme(val label: String, private val lightPrimary: Int, private
 
     companion object {
         fun from(value: String?): AccentTheme {
-            return entries.firstOrNull { it.name == value } ?: BLUE
+            return entries.firstOrNull { it.name == value } ?: DEFAULT
         }
 
         private fun tint(color: Int, amount: Float, base: Int): Int {
