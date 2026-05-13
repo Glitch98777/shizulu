@@ -207,10 +207,10 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(8), dp(10), dp(10))
             background = roundedRect(COLORS.surface, dp(0), COLORS.outline, 1)
 
-            homeNav = navButton("Home") { showPage(Page.HOME) }
-            modulesNav = navButton("Modules") { showPage(Page.MODULES) }
-            profilesNav = navButton("Profiles") { showPage(Page.PROFILES) }
-            toolsNav = navButton("Tools") { showPage(Page.TOOLS) }
+            homeNav = navButton("⌂\nHome") { showPage(Page.HOME) }
+            modulesNav = navButton("▦\nModules") { showPage(Page.MODULES) }
+            profilesNav = navButton("▱\nProfiles") { showPage(Page.PROFILES) }
+            toolsNav = navButton("⚙\nTools") { showPage(Page.TOOLS) }
 
             addView(homeNav, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(modulesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
@@ -222,9 +222,10 @@ class MainActivity : Activity() {
     private fun navButton(label: String, onClick: () -> Unit): TextView {
         return TextView(this).apply {
             text = label
-            textSize = 13f
+            textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
+            setLineSpacing(0f, 0.95f)
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
