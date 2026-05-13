@@ -226,6 +226,7 @@ class MainActivity : Activity() {
                 content.addView(executionModePanel(), spacedParams(top = 10))
                 content.addView(wirelessAdbPanel(), spacedParams(top = 10))
                 content.addView(shizuleLabPanel(), spacedParams(top = 10))
+                content.addView(rootlessPowerPanel(), spacedParams(top = 10))
                 content.addView(persistencePanel(), spacedParams(top = 10))
                 content.addView(updaterPanel(), spacedParams(top = 10))
                 content.addView(appearancePanel(), spacedParams(top = 10))
@@ -619,6 +620,43 @@ class MainActivity : Activity() {
                     leftMargin = dp(10)
                 })
             })
+        }
+    }
+
+    private fun rootlessPowerPanel(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = "Rootless Power Tools"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            addView(TextView(context).apply {
+                text = "Shell-level SU compatibility, RRO overlays, AppOps, and package commands through the selected backend. This does not grant arbitrary apps true system root."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("SU Bridge", filled = true) { showSuBridgeMenu() }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("RRO", filled = false) { showRroMenu() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    leftMargin = dp(10)
+                })
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("AppOps", filled = false) { showAppOpsMenu() }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("Packages", filled = false) { showPackageMenu() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    leftMargin = dp(10)
+                })
+            }, spacedParams(top = 10))
         }
     }
 
@@ -1195,6 +1233,223 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun showSuBridgeMenu() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("SU Bridge")
+            .setMessage("Shizulu can provide a shell-privilege su-compatible bridge for shizules and tools. Android will not let a normal APK hijack other apps' real /system/bin/su calls without root or app patching.")
+            .setItems(arrayOf("Install bridge shizule", "Install /data/local/tmp bridge script", "Bridge status")) { _, which ->
+                when (which) {
+                    0 -> installSuBridgeShizule()
+                    1 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    2 -> runPowerCommand(
+                        "SU Bridge Status",
+                        "id; echo SHIZULU=\$SHIZULU; echo API=\$SHIZULU_API_VERSION; echo MODULE=\$SHIZULU_MODULE_ID; if [ -x /data/local/tmp/shizulu-su ]; then /data/local/tmp/shizulu-su -c 'id'; else echo bridge script missing; fi",
+                        "com.shizulu.su_bridge"
+                    )
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun installSuBridgeShizule() {
+        val raw = suBridgeShizuleJson()
+        runCatching { Shizule.fromJson(raw) }
+            .onSuccess { shizule ->
+                if (installTrusted(raw, shizule, refreshAfterInstall = true, showToast = true)) {
+                    appendLog("Installed SU Bridge shizule")
+                }
+            }
+            .onFailure {
+                val message = it.message ?: "Invalid SU Bridge shizule"
+                appendLog("SU Bridge shizule install failed: $message")
+                showOutput("SU Bridge", message)
+            }
+    }
+
+    private fun showRroMenu() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("RRO Overlays")
+            .setItems(arrayOf("List overlays", "Enable overlay package", "Disable overlay package", "Fabricated overlay template")) { _, which ->
+                when (which) {
+                    0 -> runPowerCommand("RRO Overlays", "cmd overlay list", "com.shizulu.rro")
+                    1 -> promptForShellToken("Enable overlay", "Overlay package name, or fabricated id like com.android.shell:name", "com.example.overlay") { pkg ->
+                        runPowerCommand("Enable Overlay", "cmd overlay enable --user 0 ${pkg.shellQuote()}", "com.shizulu.rro")
+                    }
+                    2 -> promptForShellToken("Disable overlay", "Overlay package name, or fabricated id like com.android.shell:name", "com.example.overlay") { pkg ->
+                        runPowerCommand("Disable Overlay", "cmd overlay disable --user 0 ${pkg.shellQuote()}", "com.shizulu.rro")
+                    }
+                    3 -> showOutput(
+                        "Fabricated Overlay Template",
+                        "Android's shell supports fabricated overlays on some builds, but exact resource names are ROM-specific.\n\nTemplate:\ncmd overlay fabricate --target <target.package> --name <overlayName> <resourceName> <type> <value>\ncmd overlay enable --user 0 com.android.shell:shizulu.<overlayName>\n\nUse List overlays first, then run a custom shizule command once you know the target resource."
+                    )
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showAppOpsMenu() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Advanced AppOps")
+            .setItems(arrayOf("Get package AppOps", "Set AppOp mode", "Reset package AppOps")) { _, which ->
+                when (which) {
+                    0 -> promptForPackage("Get AppOps", "Package name") { pkg ->
+                        runPowerCommand("AppOps: $pkg", "cmd appops get ${pkg.shellQuote()}", "com.shizulu.appops")
+                    }
+                    1 -> promptForLines(
+                        title = "Set AppOp",
+                        message = "Enter package, op, and mode on separate lines. Example mode: allow, ignore, deny, foreground, default.",
+                        initial = "com.example.app\nRUN_IN_BACKGROUND\nignore"
+                    ) { lines ->
+                        val pkg = lines.getOrNull(0)?.trim().orEmpty()
+                        val op = lines.getOrNull(1)?.trim().orEmpty()
+                        val mode = lines.getOrNull(2)?.trim().orEmpty()
+                        val validPackage = validPackageOrToast(pkg) ?: return@promptForLines
+                        if (!op.isSafeShellToken() || !mode.isSafeShellToken()) {
+                            Toast.makeText(this, "Op and mode cannot contain spaces or shell characters.", Toast.LENGTH_LONG).show()
+                            return@promptForLines
+                        }
+                        runPowerCommand("Set AppOp", "cmd appops set ${validPackage.shellQuote()} $op $mode", "com.shizulu.appops")
+                    }
+                    2 -> promptForPackage("Reset AppOps", "Package name") { pkg ->
+                        runPowerCommand("Reset AppOps", "cmd appops reset ${pkg.shellQuote()}", "com.shizulu.appops")
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showPackageMenu() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Package Manipulation")
+            .setItems(arrayOf("List user packages", "Enable package", "Disable package for user 0", "Clear package data", "Optimize package")) { _, which ->
+                when (which) {
+                    0 -> runPowerCommand("User Packages", "cmd package list packages -3", "com.shizulu.package_tools")
+                    1 -> promptForPackage("Enable package", "Package name") { pkg ->
+                        runPowerCommand("Enable Package", "pm enable ${pkg.shellQuote()}", "com.shizulu.package_tools")
+                    }
+                    2 -> promptForPackage("Disable package", "Package name") { pkg ->
+                        runPowerCommand("Disable Package", "pm disable-user --user 0 ${pkg.shellQuote()}", "com.shizulu.package_tools")
+                    }
+                    3 -> promptForPackage("Clear data", "Package name") { pkg ->
+                        runPowerCommand("Clear Package Data", "pm clear ${pkg.shellQuote()}", "com.shizulu.package_tools")
+                    }
+                    4 -> promptForPackage("Optimize package", "Package name") { pkg ->
+                        runPowerCommand("Optimize Package", "cmd package compile -m speed-profile -f ${pkg.shellQuote()}", "com.shizulu.package_tools")
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun promptForPackage(title: String, hint: String, onPackage: (String) -> Unit) {
+        promptForLines(title, hint, "com.example.app") { lines ->
+            validPackageOrToast(lines.firstOrNull().orEmpty().trim())?.let(onPackage)
+        }
+    }
+
+    private fun promptForShellToken(title: String, message: String, initial: String, onToken: (String) -> Unit) {
+        promptForLines(title, message, initial) { lines ->
+            val token = lines.firstOrNull().orEmpty().trim()
+            if (token.isSafeShellToken()) {
+                onToken(token)
+            } else {
+                Toast.makeText(this, "Value cannot contain spaces or shell characters.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun promptForLines(title: String, message: String, initial: String, onLines: (List<String>) -> Unit) {
+        val input = EditText(this).apply {
+            setText(initial)
+            typeface = Typeface.MONOSPACE
+            textSize = 13f
+            gravity = Gravity.START or Gravity.TOP
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            minLines = initial.lines().size.coerceAtLeast(2)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setTextColor(COLORS.ink)
+            setHintTextColor(COLORS.muted)
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setView(input)
+            .setPositiveButton("Run") { _, _ ->
+                onLines(input.text.toString().lines().map { it.trim() }.filter { it.isNotBlank() })
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun validPackageOrToast(value: String): String? {
+        if (value.matches(PACKAGE_NAME_PATTERN)) return value
+        Toast.makeText(this, "Invalid package name.", Toast.LENGTH_LONG).show()
+        return null
+    }
+
+    private fun runPowerCommand(title: String, command: String, moduleId: String) {
+        if (dryRunEnabled) {
+            appendLog("Dry run power command: $title")
+            showOutput(title, "Dry run: no command executed.\n\n$ $command")
+            return
+        }
+
+        if (executionMode == ExecutionMode.WIRELESS_ADB) {
+            val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
+            val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
+            if (pairingCode.isBlank() || port <= 0) {
+                appendLog("$title blocked: Wireless ADB not configured")
+                showOutput(title, "Pair Wireless ADB first, or switch the execution backend to Shizuku.")
+                return
+            }
+            appendLog("Power command started over Wireless ADB: $title")
+            executor.execute {
+                runCatching { WirelessAdbRunner(applicationContext).runCommand(moduleId, command, pairingCode, port) }
+                    .onSuccess { result ->
+                        appendLog("Power command finished: $title")
+                        mainHandler.post { showOutput(title, result.output) }
+                    }
+                    .onFailure {
+                        val message = it.message ?: it.javaClass.simpleName
+                        appendLog("Power command failed: $title: $message")
+                        mainHandler.post { showOutput(title, "Failed: $message") }
+                    }
+            }
+            return
+        }
+
+        if (!hasShizukuPermission()) {
+            requestShizukuPermission()
+            return
+        }
+        bindUserService()
+        val currentService = service
+        if (currentService == null) {
+            appendLog("$title delayed: Shizulu service is still binding")
+            Toast.makeText(this, "Binding Shizulu service. Try again in a moment.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        appendLog("Power command started over Shizuku: $title")
+        executor.execute {
+            runCatching { currentService.runShizuleCommand(moduleId, command) }
+                .onSuccess { result ->
+                    appendLog("Power command finished: $title")
+                    mainHandler.post { showOutput(title, result) }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Power command failed: $title: $message")
+                    mainHandler.post { showOutput(title, "Failed: $message") }
+                }
+        }
+    }
+
     private fun requestShizukuPermission() {
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             appendLog("Shizuku permission request failed: Shizuku is not connected")
@@ -1558,6 +1813,45 @@ class MainActivity : Activity() {
                 )
             )
         )
+    }
+
+    private fun suBridgeShizuleJson(): String {
+        return shizuleJson(
+            id = "com.shizulu.su_bridge",
+            name = "SU Bridge",
+            version = "1.0.0",
+            description = "Shell-level su compatibility helpers for Shizulu. This is not true system root for arbitrary apps.",
+            actions = listOf(
+                "Bridge Status" to listOf(
+                    "id; echo SHIZULU=\$SHIZULU; echo API=\$SHIZULU_API_VERSION; echo MODULE=\$SHIZULU_MODULE_ID",
+                    "if [ -x /data/local/tmp/shizulu-su ]; then /data/local/tmp/shizulu-su -c 'id'; else echo bridge script missing; fi"
+                ),
+                "Install Bridge Script" to listOf(
+                    suBridgeInstallCommand()
+                ),
+                "Remove Bridge Script" to listOf(
+                    "rm -f /data/local/tmp/shizulu-su; echo removed /data/local/tmp/shizulu-su"
+                )
+            )
+        )
+    }
+
+    private fun suBridgeInstallCommand(): String {
+        return listOf(
+            "cat > /data/local/tmp/shizulu-su <<'EOF'",
+            "#!/system/bin/sh",
+            "if [ \"\$1\" = \"-c\" ]; then",
+            "  shift",
+            "  exec /system/bin/sh -c \"\$*\"",
+            "fi",
+            "if [ \"\$#\" -gt 0 ]; then",
+            "  exec /system/bin/sh \"\$@\"",
+            "fi",
+            "exec /system/bin/sh",
+            "EOF",
+            "chmod 700 /data/local/tmp/shizulu-su",
+            "echo installed /data/local/tmp/shizulu-su"
+        ).joinToString("\n")
     }
 
     private fun blankShizuleTemplate(): String {
@@ -2253,6 +2547,14 @@ class MainActivity : Activity() {
         return LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) }
     }
 
+    private fun String.shellQuote(): String {
+        return "'${replace("'", "'\"'\"'")}'"
+    }
+
+    private fun String.isSafeShellToken(): Boolean {
+        return matches(SAFE_SHELL_TOKEN_PATTERN)
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private object COLORS {
@@ -2299,6 +2601,8 @@ class MainActivity : Activity() {
         private const val MAX_LOG_LINES = 160
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
+        private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
+        private val SAFE_SHELL_TOKEN_PATTERN = Regex("^[A-Za-z0-9_./:-]+$")
 
         private val PROFILES = listOf(
             ShizuluProfile(

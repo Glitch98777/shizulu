@@ -53,6 +53,15 @@ class WirelessAdbRunner(private val context: Context) {
         return WirelessAdbResult(output.toString().trim())
     }
 
+    fun runCommand(moduleId: String, command: String, pairingCode: String, pairingPort: Int): WirelessAdbResult {
+        val action = ShizuleAction(
+            id = "direct",
+            label = "Direct command",
+            commands = listOf(ShizuleCommand(command))
+        )
+        return run(moduleId, action, pairingCode, pairingPort)
+    }
+
     private fun connect(pairingCode: String, pairingPort: Int, log: StringBuilder): Kadb {
         connectUsingCachedOrDiscoveredPort(log)?.let { return it }
 
