@@ -776,7 +776,7 @@ class MainActivity : Activity() {
     private fun renderDryRun() {
         if (::dryRunButton.isInitialized) {
             dryRunButton.text = if (dryRunEnabled) "Dry Run: On" else "Dry Run: Off"
-            dryRunButton.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.primary)
+            dryRunButton.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.ink)
         }
         if (::modeSummaryText.isInitialized) {
             modeSummaryText.text = "${if (dryRunEnabled) "Dry" else "Live"}\nMode"
@@ -1898,11 +1898,11 @@ class MainActivity : Activity() {
     }
 
     private fun secondaryButton(label: String, onClick: () -> Unit): TextView {
-        return textButton(label, COLORS.surface, COLORS.primary, COLORS.primary, onClick)
+        return textButton(label, COLORS.surface, COLORS.ink, COLORS.outlineStrong, onClick)
     }
 
     private fun readableSecondaryButton(label: String, onClick: () -> Unit): TextView {
-        return textButton(label, COLORS.surface, COLORS.ink, COLORS.outlineStrong, onClick)
+        return secondaryButton(label, onClick)
     }
 
     private fun compactButton(label: String, filled: Boolean, onClick: () -> Unit): TextView {
