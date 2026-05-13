@@ -63,6 +63,8 @@ class MainActivity : Activity() {
     private lateinit var modeSummaryText: TextView
     private lateinit var updaterStatusText: TextView
     private lateinit var updaterButton: TextView
+    private lateinit var lightModeButton: TextView
+    private lateinit var darkModeButton: TextView
     private lateinit var profilesList: LinearLayout
     private lateinit var moduleList: LinearLayout
     private lateinit var contentHost: FrameLayout
@@ -106,12 +108,14 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        tuneWindow()
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
         Shizuku.addRequestPermissionResultListener(permissionListener)
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
         dryRunEnabled = settingsPrefs.getBoolean(KEY_DRY_RUN, false)
         executionMode = ExecutionMode.from(settingsPrefs.getString(KEY_EXECUTION_MODE, null))
+        applyThemeFromPrefs()
+        tuneWindow()
         buildUi()
         renderStatus()
         renderDryRun()
@@ -141,13 +145,13 @@ class MainActivity : Activity() {
     }
 
     private fun tuneWindow() {
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.statusBarColor = COLORS.background
         window.navigationBarColor = COLORS.background
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        window.decorView.systemUiVisibility = if (COLORS.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
     }
 
     private fun buildUi() {
+        tuneWindow()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(COLORS.background)
@@ -461,6 +465,7 @@ class MainActivity : Activity() {
 
             addView(executionModePanel())
             addView(wirelessAdbPanel(), spacedParams(top = 10))
+            addView(appearancePanel(), spacedParams(top = 10))
             addView(updaterPanel(), spacedParams(top = 10))
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
@@ -563,6 +568,76 @@ class MainActivity : Activity() {
                 }
                 addView(updaterButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
             })
+        }
+    }
+
+    private fun appearancePanel(): View {
+        val mode = AppearanceMode.from(settingsPrefs.getString(KEY_APPEARANCE_MODE, null))
+        val accent = AccentTheme.from(settingsPrefs.getString(KEY_ACCENT_THEME, null))
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = "Appearance"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            addView(TextView(context).apply {
+                text = "Choose a light or dark manager theme and a Shizulu accent color."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                lightModeButton = compactButton("Light", filled = mode == AppearanceMode.LIGHT) {
+                    saveAppearance(AppearanceMode.LIGHT, accent)
+                }
+                darkModeButton = compactButton("Dark", filled = mode == AppearanceMode.DARK) {
+                    saveAppearance(AppearanceMode.DARK, accent)
+                }
+                addView(lightModeButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(darkModeButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+            })
+
+            addView(TextView(context).apply {
+                text = "Theme"
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(12), 0, dp(8))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                AccentTheme.entries.forEachIndexed { index, theme ->
+                    addView(themeSwatch(theme, theme == accent), LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        if (index > 0) leftMargin = dp(8)
+                    })
+                }
+            })
+        }
+    }
+
+    private fun themeSwatch(theme: AccentTheme, selected: Boolean): TextView {
+        val palette = theme.palette(AppearanceMode.LIGHT)
+        return TextView(this).apply {
+            text = theme.label
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(if (selected) Color.WHITE else palette.primary)
+            background = ripple(if (selected) palette.primary else COLORS.surface, if (selected) 0 else palette.primary)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                saveAppearance(AppearanceMode.from(settingsPrefs.getString(KEY_APPEARANCE_MODE, null)), theme)
+            }
         }
     }
 
@@ -917,6 +992,22 @@ class MainActivity : Activity() {
         if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
     }
 
+    private fun saveAppearance(mode: AppearanceMode, accent: AccentTheme) {
+        settingsPrefs.edit()
+            .putString(KEY_APPEARANCE_MODE, mode.name)
+            .putString(KEY_ACCENT_THEME, accent.name)
+            .apply()
+        applyThemeFromPrefs()
+        appendLog("Appearance set to ${mode.label} / ${accent.label}")
+        buildUi()
+    }
+
+    private fun applyThemeFromPrefs() {
+        val mode = AppearanceMode.from(settingsPrefs.getString(KEY_APPEARANCE_MODE, null))
+        val accent = AccentTheme.from(settingsPrefs.getString(KEY_ACCENT_THEME, null))
+        COLORS.palette = accent.palette(mode)
+    }
+
     private fun wirelessAdbConfigured(): Boolean {
         return settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty().isNotBlank() &&
             settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0) > 0
@@ -1204,6 +1295,8 @@ class MainActivity : Activity() {
             put("schema", 1)
             put("createdAt", timestamp())
             put("dryRun", dryRunEnabled)
+            put("appearanceMode", AppearanceMode.from(settingsPrefs.getString(KEY_APPEARANCE_MODE, null)).name)
+            put("accentTheme", AccentTheme.from(settingsPrefs.getString(KEY_ACCENT_THEME, null)).name)
             put("logs", readLogs())
             put("customProfiles", profilesToJson(loadCustomProfiles()))
             put("shizules", JSONArray().apply {
@@ -1247,12 +1340,16 @@ class MainActivity : Activity() {
             settingsPrefs.edit()
                 .putBoolean(KEY_DRY_RUN, backup.optBoolean("dryRun", dryRunEnabled))
                 .putString(KEY_CUSTOM_PROFILES, customProfiles.toString())
+                .putString(KEY_APPEARANCE_MODE, backup.optString("appearanceMode", AppearanceMode.LIGHT.name))
+                .putString(KEY_ACCENT_THEME, backup.optString("accentTheme", AccentTheme.BLUE.name))
                 .apply()
             dryRunEnabled = settingsPrefs.getBoolean(KEY_DRY_RUN, false)
+            applyThemeFromPrefs()
 
             val restoredLogs = backup.optString("logs", "")
             if (restoredLogs.isNotBlank()) logPrefs.edit().putString(KEY_LOGS, restoredLogs).apply()
             appendLog("Backup restored: $installed shizule(s), ${customProfiles.length()} custom profile(s)")
+            buildUi()
             renderDryRun()
             refreshModules()
             Toast.makeText(this, "Backup restored", Toast.LENGTH_SHORT).show()
@@ -1550,22 +1647,24 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private object COLORS {
-        const val background = 0xFFF7F9FC.toInt()
-        const val surface = 0xFFFFFFFF.toInt()
-        const val surfaceAlt = 0xFFF1F5F9.toInt()
-        const val ink = 0xFF172033.toInt()
-        const val body = 0xFF31415A.toInt()
-        const val muted = 0xFF6B778C.toInt()
-        const val outline = 0xFFE1E8F0.toInt()
-        const val outlineStrong = 0xFFCBD5E1.toInt()
-        const val primary = 0xFF3A7DFF.toInt()
-        const val primarySoft = 0xFFE8F0FF.toInt()
-        const val secondary = 0xFF7C3AED.toInt()
-        const val secondarySoft = 0xFFF1EAFF.toInt()
-        const val success = 0xFF0E7A53.toInt()
-        const val successSoft = 0xFFE4F8EF.toInt()
-        const val warning = 0xFF9A5B00.toInt()
-        const val warningSoft = 0xFFFFF1D6.toInt()
+        var palette = AccentTheme.BLUE.palette(AppearanceMode.LIGHT)
+        val dark get() = palette.dark
+        val background get() = palette.background
+        val surface get() = palette.surface
+        val surfaceAlt get() = palette.surfaceAlt
+        val ink get() = palette.ink
+        val body get() = palette.body
+        val muted get() = palette.muted
+        val outline get() = palette.outline
+        val outlineStrong get() = palette.outlineStrong
+        val primary get() = palette.primary
+        val primarySoft get() = palette.primarySoft
+        val secondary get() = palette.secondary
+        val secondarySoft get() = palette.secondarySoft
+        val success get() = palette.success
+        val successSoft get() = palette.successSoft
+        val warning get() = palette.warning
+        val warningSoft get() = palette.warningSoft
     }
 
     companion object {
@@ -1577,6 +1676,8 @@ class MainActivity : Activity() {
         private const val KEY_DRY_RUN = "dry_run"
         private const val KEY_CUSTOM_PROFILES = "custom_profiles"
         private const val KEY_EXECUTION_MODE = "execution_mode"
+        private const val KEY_APPEARANCE_MODE = "appearance_mode"
+        private const val KEY_ACCENT_THEME = "accent_theme"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val MAX_LOG_LINES = 160
@@ -1640,6 +1741,26 @@ data class GithubRelease(
     val apkUrl: String
 )
 
+data class ThemePalette(
+    val dark: Boolean,
+    val background: Int,
+    val surface: Int,
+    val surfaceAlt: Int,
+    val ink: Int,
+    val body: Int,
+    val muted: Int,
+    val outline: Int,
+    val outlineStrong: Int,
+    val primary: Int,
+    val primarySoft: Int,
+    val secondary: Int,
+    val secondarySoft: Int,
+    val success: Int,
+    val successSoft: Int,
+    val warning: Int,
+    val warningSoft: Int
+)
+
 enum class Page {
     HOME,
     MODULES,
@@ -1654,6 +1775,61 @@ enum class ExecutionMode(val label: String) {
     companion object {
         fun from(value: String?): ExecutionMode {
             return entries.firstOrNull { it.name == value } ?: SHIZUKU
+        }
+    }
+}
+
+enum class AppearanceMode(val label: String) {
+    LIGHT("Light"),
+    DARK("Dark");
+
+    companion object {
+        fun from(value: String?): AppearanceMode {
+            return entries.firstOrNull { it.name == value } ?: LIGHT
+        }
+    }
+}
+
+enum class AccentTheme(val label: String, private val lightPrimary: Int, private val darkPrimary: Int) {
+    BLUE("Blue", 0xFF3A7DFF.toInt(), 0xFF7BA7FF.toInt()),
+    JADE("Jade", 0xFF0F8B6F.toInt(), 0xFF4DD6B3.toInt()),
+    VIOLET("Violet", 0xFF7C3AED.toInt(), 0xFFA78BFA.toInt()),
+    ROSE("Rose", 0xFFE0446D.toInt(), 0xFFFF7A9B.toInt());
+
+    fun palette(mode: AppearanceMode): ThemePalette {
+        val dark = mode == AppearanceMode.DARK
+        val primary = if (dark) darkPrimary else lightPrimary
+        return ThemePalette(
+            dark = dark,
+            background = if (dark) 0xFF0D111A.toInt() else 0xFFF7F9FC.toInt(),
+            surface = if (dark) 0xFF151B26.toInt() else 0xFFFFFFFF.toInt(),
+            surfaceAlt = if (dark) 0xFF1C2431.toInt() else 0xFFF1F5F9.toInt(),
+            ink = if (dark) 0xFFF4F7FB.toInt() else 0xFF172033.toInt(),
+            body = if (dark) 0xFFD7DEE8.toInt() else 0xFF31415A.toInt(),
+            muted = if (dark) 0xFF9CA8B8.toInt() else 0xFF6B778C.toInt(),
+            outline = if (dark) 0xFF2A3443.toInt() else 0xFFE1E8F0.toInt(),
+            outlineStrong = if (dark) 0xFF3C485B.toInt() else 0xFFCBD5E1.toInt(),
+            primary = primary,
+            primarySoft = if (dark) tint(primary, 0.18f, 0xFF0D111A.toInt()) else tint(primary, 0.12f, 0xFFFFFFFF.toInt()),
+            secondary = if (dark) 0xFFC4B5FD.toInt() else 0xFF7C3AED.toInt(),
+            secondarySoft = if (dark) 0xFF2D2547.toInt() else 0xFFF1EAFF.toInt(),
+            success = if (dark) 0xFF6EE7B7.toInt() else 0xFF0E7A53.toInt(),
+            successSoft = if (dark) 0xFF12392E.toInt() else 0xFFE4F8EF.toInt(),
+            warning = if (dark) 0xFFFDBA74.toInt() else 0xFF9A5B00.toInt(),
+            warningSoft = if (dark) 0xFF3B2813.toInt() else 0xFFFFF1D6.toInt()
+        )
+    }
+
+    companion object {
+        fun from(value: String?): AccentTheme {
+            return entries.firstOrNull { it.name == value } ?: BLUE
+        }
+
+        private fun tint(color: Int, amount: Float, base: Int): Int {
+            val r = Color.red(base) + ((Color.red(color) - Color.red(base)) * amount).toInt()
+            val g = Color.green(base) + ((Color.green(color) - Color.green(base)) * amount).toInt()
+            val b = Color.blue(base) + ((Color.blue(color) - Color.blue(base)) * amount).toInt()
+            return Color.rgb(r, g, b)
         }
     }
 }

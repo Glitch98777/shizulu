@@ -14,6 +14,7 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 - Run shizule commands as the ADB/shell identity.
 - Choose between the Shizuku backend and standalone Wireless ADB execution.
 - Dry Run mode previews and logs commands without executing them.
+- Appearance settings in Tools for Light/Dark mode and Blue, Jade, Violet, or Rose accents.
 - Profiles run grouped module actions like `Comfort Setup`, `Clean Pixel`, and `Stock Restore`.
 - Create custom profiles from installed shizule actions.
 - Export and restore JSON backups for installed shizules, custom profiles, dry-run state, and logs.
