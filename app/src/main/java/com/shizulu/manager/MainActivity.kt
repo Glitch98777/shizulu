@@ -302,7 +302,7 @@ class MainActivity : Activity() {
                 textSize = 22f
                 gravity = Gravity.CENTER
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
+                setTextColor(COLORS.onPrimary)
                 background = roundedRect(COLORS.primary, dp(16))
             }, LinearLayout.LayoutParams(dp(52), dp(52)))
 
@@ -689,13 +689,14 @@ class MainActivity : Activity() {
     }
 
     private fun themeSwatch(theme: AccentTheme, selected: Boolean): TextView {
-        val palette = theme.palette(AppearanceMode.LIGHT)
+        val mode = AppearanceMode.from(settingsPrefs.getString(KEY_APPEARANCE_MODE, null))
+        val palette = theme.palette(mode)
         return TextView(this).apply {
             text = theme.label
             textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(if (selected) Color.WHITE else palette.primary)
+            setTextColor(if (selected) palette.onPrimary else COLORS.ink)
             background = ripple(if (selected) palette.primary else COLORS.surface, if (selected) 0 else palette.primary)
             isClickable = true
             isFocusable = true
@@ -1725,7 +1726,7 @@ class MainActivity : Activity() {
     }
 
     private fun primaryButton(label: String, onClick: () -> Unit): TextView {
-        return textButton(label, COLORS.primary, Color.WHITE, 0, onClick)
+        return textButton(label, COLORS.primary, COLORS.onPrimary, 0, onClick)
     }
 
     private fun secondaryButton(label: String, onClick: () -> Unit): TextView {
@@ -1734,7 +1735,7 @@ class MainActivity : Activity() {
 
     private fun compactButton(label: String, filled: Boolean, onClick: () -> Unit): TextView {
         val background = if (filled) COLORS.primary else COLORS.surfaceAlt
-        val foreground = if (filled) Color.WHITE else COLORS.ink
+        val foreground = if (filled) COLORS.onPrimary else COLORS.ink
         val stroke = if (filled) 0 else COLORS.outlineStrong
         return textButton(label, background, foreground, stroke, onClick).apply {
             textSize = 13f
@@ -1819,6 +1820,7 @@ class MainActivity : Activity() {
         val outline get() = palette.outline
         val outlineStrong get() = palette.outlineStrong
         val primary get() = palette.primary
+        val onPrimary get() = palette.onPrimary
         val primarySoft get() = palette.primarySoft
         val secondary get() = palette.secondary
         val secondarySoft get() = palette.secondarySoft
@@ -1939,6 +1941,7 @@ data class ThemePalette(
     val outline: Int,
     val outlineStrong: Int,
     val primary: Int,
+    val onPrimary: Int,
     val primarySoft: Int,
     val secondary: Int,
     val secondarySoft: Int,
@@ -1978,30 +1981,32 @@ enum class AppearanceMode(val label: String) {
 }
 
 enum class AccentTheme(val label: String, private val lightPrimary: Int, private val darkPrimary: Int) {
-    DEFAULT("Default", 0xFF475569.toInt(), 0xFFE2E8F0.toInt()),
-    BLUE("Blue", 0xFF3A7DFF.toInt(), 0xFF7BA7FF.toInt()),
-    JADE("Jade", 0xFF0F8B6F.toInt(), 0xFF4DD6B3.toInt()),
-    VIOLET("Violet", 0xFF7C3AED.toInt(), 0xFFA78BFA.toInt()),
-    ROSE("Rose", 0xFFE0446D.toInt(), 0xFFFF7A9B.toInt());
+    DEFAULT("Default", 0xFFE5E7EB.toInt(), 0xFF273142.toInt()),
+    BLUE("Blue", 0xFFDCEAFF.toInt(), 0xFF1E3A8A.toInt()),
+    JADE("Jade", 0xFFDDF8EE.toInt(), 0xFF065F46.toInt()),
+    VIOLET("Violet", 0xFFEDE7FF.toInt(), 0xFF5B21B6.toInt()),
+    ROSE("Rose", 0xFFFFE4EC.toInt(), 0xFF9F1239.toInt());
 
     fun palette(mode: AppearanceMode): ThemePalette {
         val dark = mode == AppearanceMode.DARK
         val primary = if (dark) darkPrimary else lightPrimary
+        val onPrimary = if (dark) 0xFFFFFFFF.toInt() else 0xFF111827.toInt()
         return ThemePalette(
             dark = dark,
             background = if (dark) 0xFF0D111A.toInt() else 0xFFF7F9FC.toInt(),
             surface = if (dark) 0xFF151B26.toInt() else 0xFFFFFFFF.toInt(),
             surfaceAlt = if (dark) 0xFF1C2431.toInt() else 0xFFF1F5F9.toInt(),
-            ink = if (dark) 0xFFF4F7FB.toInt() else 0xFF172033.toInt(),
-            body = if (dark) 0xFFD7DEE8.toInt() else 0xFF31415A.toInt(),
-            muted = if (dark) 0xFF9CA8B8.toInt() else 0xFF6B778C.toInt(),
+            ink = if (dark) 0xFFFFFFFF.toInt() else 0xFF111827.toInt(),
+            body = if (dark) 0xFFE5E7EB.toInt() else 0xFF1F2937.toInt(),
+            muted = if (dark) 0xFFC5CEDB.toInt() else 0xFF475569.toInt(),
             outline = if (dark) 0xFF2A3443.toInt() else 0xFFE1E8F0.toInt(),
             outlineStrong = if (dark) 0xFF3C485B.toInt() else 0xFFCBD5E1.toInt(),
             primary = primary,
-            primarySoft = if (dark) tint(primary, 0.18f, 0xFF0D111A.toInt()) else tint(primary, 0.12f, 0xFFFFFFFF.toInt()),
-            secondary = if (dark) 0xFFC4B5FD.toInt() else 0xFF7C3AED.toInt(),
+            onPrimary = onPrimary,
+            primarySoft = if (dark) tint(primary, 0.50f, 0xFF0D111A.toInt()) else tint(primary, 0.48f, 0xFFFFFFFF.toInt()),
+            secondary = if (dark) lighten(0xFF5B21B6.toInt(), 0.44f) else 0xFF5B21B6.toInt(),
             secondarySoft = if (dark) 0xFF2D2547.toInt() else 0xFFF1EAFF.toInt(),
-            success = if (dark) 0xFF6EE7B7.toInt() else 0xFF0E7A53.toInt(),
+            success = if (dark) 0xFF86EFAC.toInt() else 0xFF0E7A53.toInt(),
             successSoft = if (dark) 0xFF12392E.toInt() else 0xFFE4F8EF.toInt(),
             warning = if (dark) 0xFFFDBA74.toInt() else 0xFF9A5B00.toInt(),
             warningSoft = if (dark) 0xFF3B2813.toInt() else 0xFFFFF1D6.toInt()
@@ -2018,6 +2023,10 @@ enum class AccentTheme(val label: String, private val lightPrimary: Int, private
             val g = Color.green(base) + ((Color.green(color) - Color.green(base)) * amount).toInt()
             val b = Color.blue(base) + ((Color.blue(color) - Color.blue(base)) * amount).toInt()
             return Color.rgb(r, g, b)
+        }
+
+        private fun lighten(color: Int, amount: Float): Int {
+            return tint(color, 1f - amount, Color.WHITE)
         }
     }
 }
