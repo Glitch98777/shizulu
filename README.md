@@ -12,10 +12,11 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 - Install and remove shizules from private app storage.
 - Request Shizuku permission and bind a Shizuku `UserService`.
 - Run shizule commands as the ADB/shell identity.
-- Warn before installing or running unsigned shizules.
 - Dry Run mode previews and logs commands without executing them.
 - Profiles run grouped module actions like `Comfort Setup`, `Clean Pixel`, and `Stock Restore`.
-- Persistent logs show imports, dry runs, command exits, failures, and canceled unsigned actions.
+- Create custom profiles from installed shizule actions.
+- Export and restore JSON backups for installed shizules, custom profiles, dry-run state, and logs.
+- Persistent logs show imports, dry runs, command exits, and failures.
 - Includes sample shizules for animation tuning, display comfort, conservative debloating, and Shizulu capability boosting.
 
 ## Shizule Format
@@ -61,13 +62,15 @@ SHIZULU_MODULE_ID=<installed module id>
 
 Keep shizules readable and only install files you trust. Shizulu intentionally runs actions only when you tap an action button.
 
-If `signature` is missing, Shizulu treats the file as unsigned and warns before installing or running it. The current signature metadata is informational; it is a trust signal for authorship, not cryptographic verification yet.
+The optional `signature` metadata is informational for now; it is a trust signal for authorship, not cryptographic verification yet.
 
 ## Manager features
 
 - Dry Run mode logs every command that would run without changing the device.
 - Profiles run grouped actions from installed shizules, such as Comfort Setup, Clean Pixel, and Stock Restore.
-- Logs capture imports, canceled unsigned actions, dry runs, command exits, and failures.
+- Custom profiles can be created from installed shizule actions and removed later.
+- Backups export installed shizules, custom profiles, logs, and dry-run state to a portable JSON file.
+- Logs capture imports, dry runs, command exits, and failures.
 
 ## Included Samples
 
@@ -97,6 +100,10 @@ The project uses the official Shizuku API artifacts:
 
 - `dev.rikka.shizuku:api:13.1.5`
 - `dev.rikka.shizuku:provider:13.1.5`
+
+## Releases
+
+Every successful push build on `main` publishes a normal GitHub release with the debug APK attached. Automated release tags use the format `build-<github-run-number>`.
 
 ## Try It
 

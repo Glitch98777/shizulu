@@ -15,14 +15,18 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.Window
+import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import org.json.JSONArray
+import org.json.JSONObject
 import rikka.shizuku.Shizuku
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -44,6 +48,9 @@ class MainActivity : Activity() {
     private lateinit var grantButton: TextView
     private lateinit var dryRunButton: TextView
     private lateinit var moduleCount: TextView
+    private lateinit var moduleSummaryText: TextView
+    private lateinit var profileSummaryText: TextView
+    private lateinit var modeSummaryText: TextView
     private lateinit var profilesList: LinearLayout
     private lateinit var moduleList: LinearLayout
     private var service: IShizuluService? = null
@@ -104,6 +111,12 @@ class MainActivity : Activity() {
         if (requestCode == REQUEST_IMPORT && resultCode == RESULT_OK) {
             data?.data?.let(::installFromUri)
         }
+        if (requestCode == REQUEST_BACKUP_CREATE && resultCode == RESULT_OK) {
+            data?.data?.let(::writeBackupToUri)
+        }
+        if (requestCode == REQUEST_BACKUP_OPEN && resultCode == RESULT_OK) {
+            data?.data?.let(::restoreBackupFromUri)
+        }
     }
 
     private fun tuneWindow() {
@@ -125,8 +138,11 @@ class MainActivity : Activity() {
         rootScroll.addView(root, LinearLayout.LayoutParams(-1, -2))
 
         root.addView(appHeader())
-        root.addView(statusPanel(), spacedParams(top = 18))
-        root.addView(primaryActions(), spacedParams(top = 14))
+        root.addView(sectionTitle("Dashboard"), spacedParams(top = 22))
+        root.addView(statusPanel(), spacedParams(top = 10))
+        root.addView(summaryStrip(), spacedParams(top = 12))
+        root.addView(sectionTitle("Quick Actions"), spacedParams(top = 24))
+        root.addView(primaryActions(), spacedParams(top = 10))
         root.addView(profilesHeader(), spacedParams(top = 26))
 
         profilesList = LinearLayout(this).apply {
@@ -140,6 +156,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
         root.addView(moduleList, spacedParams(top = 10))
+        root.addView(sectionTitle("Tools"), spacedParams(top = 26))
         root.addView(logsFooter(), spacedParams(top = 18))
 
         setContentView(rootScroll)
@@ -172,13 +189,24 @@ class MainActivity : Activity() {
                 })
 
                 addView(TextView(context).apply {
-                    text = "ADB-privileged shizule manager"
+                    text = "Rootless modules powered by Shizuku"
                     textSize = 14f
                     setTextColor(COLORS.muted)
                     includeFontPadding = false
                     setPadding(0, dp(4), 0, 0)
                 })
             }, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+    }
+
+    private fun sectionTitle(label: String): View {
+        return TextView(this).apply {
+            text = label
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(COLORS.muted)
+            setPadding(dp(2), 0, 0, 0)
+            letterSpacing = 0.08f
         }
     }
 
@@ -221,15 +249,54 @@ class MainActivity : Activity() {
 
     private fun primaryActions(): View {
         return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+
+                addView(primaryButton("Install shizule") { openJsonPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+
+                grantButton = secondaryButton("Grant Shizuku") { requestShizukuPermission() }
+                addView(grantButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    leftMargin = dp(10)
+                })
+            })
+
+            addView(TextView(context).apply {
+                text = "Install JSON modules, grant Shizuku, then run actions from Profiles or Installed shizules."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(dp(2), dp(12), dp(2), 0)
+            })
+        }
+    }
+
+    private fun summaryStrip(): View {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
 
-            addView(primaryButton("Import .json") { openJsonPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            moduleSummaryText = summaryTile("0", "Modules")
+            profileSummaryText = summaryTile("0", "Profiles")
+            modeSummaryText = summaryTile("Live", "Mode")
 
-            grantButton = secondaryButton("Grant Shizuku") { requestShizukuPermission() }
-            addView(grantButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                leftMargin = dp(10)
-            })
+            addView(moduleSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f))
+            addView(profileSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f).apply { leftMargin = dp(10) })
+            addView(modeSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f).apply { leftMargin = dp(10) })
+        }
+    }
+
+    private fun summaryTile(value: String, label: String): TextView {
+        return TextView(this).apply {
+            text = "$value\n$label"
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(COLORS.ink)
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
         }
     }
 
@@ -277,9 +344,17 @@ class MainActivity : Activity() {
     private fun logsFooter(): View {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(8), 0, 0)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
 
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(secondaryButton("Backup") { openBackupCreator() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+                addView(secondaryButton("Restore Backup") { openBackupPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    leftMargin = dp(10)
+                })
+            }, spacedParams(top = 10))
         }
     }
 
@@ -315,6 +390,10 @@ class MainActivity : Activity() {
         if (!::dryRunButton.isInitialized) return
         dryRunButton.text = if (dryRunEnabled) "Dry Run: On" else "Dry Run: Off"
         dryRunButton.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.primary)
+        if (::modeSummaryText.isInitialized) {
+            modeSummaryText.text = "${if (dryRunEnabled) "Dry" else "Live"}\nMode"
+            modeSummaryText.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.ink)
+        }
     }
 
     private fun toggleDryRun() {
@@ -329,6 +408,9 @@ class MainActivity : Activity() {
         moduleList.removeAllViews()
         val shizules = store.list()
         moduleCount.text = shizules.size.toString()
+        if (::moduleSummaryText.isInitialized) {
+            moduleSummaryText.text = "${shizules.size}\nModules"
+        }
         refreshProfiles(shizules)
 
         if (shizules.isEmpty()) {
@@ -343,7 +425,13 @@ class MainActivity : Activity() {
 
     private fun refreshProfiles(shizules: List<Shizule>) {
         profilesList.removeAllViews()
-        PROFILES.forEachIndexed { index, profile ->
+        profilesList.addView(secondaryButton("Create Profile") { showCreateProfileDialog() }, LinearLayout.LayoutParams(-1, dp(46)))
+
+        val profiles = PROFILES + loadCustomProfiles()
+        if (::profileSummaryText.isInitialized) {
+            profileSummaryText.text = "${profiles.size}\nProfiles"
+        }
+        profiles.forEachIndexed { index, profile ->
             profilesList.addView(profileView(profile, shizules), spacedParams(top = if (index == 0) 0 else 10))
         }
     }
@@ -378,9 +466,75 @@ class MainActivity : Activity() {
                     })
                 }, LinearLayout.LayoutParams(0, -2, 1f))
 
-                addView(compactButton("Run", filled = missing == 0) { runProfile(profile) })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(compactButton("Run", filled = missing == 0) { runProfile(profile) })
+                    if (profile.custom) {
+                        addView(compactButton("Remove", filled = false) {
+                            deleteCustomProfile(profile)
+                        }, rowGapParams())
+                    }
+                })
             })
         }
+    }
+
+    private fun showCreateProfileDialog() {
+        val shizules = store.list()
+        val available = shizules.flatMap { shizule ->
+            shizule.actions.map { action ->
+                ProfileChoice("${shizule.name} / ${action.label}", ProfileStep(shizule.id, action.id))
+            }
+        }
+        if (available.isEmpty()) {
+            Toast.makeText(this, "Install shizules before creating a profile.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val checked = BooleanArray(available.size)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Choose profile actions")
+            .setMultiChoiceItems(available.map { it.label }.toTypedArray(), checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setPositiveButton("Next") { _, _ ->
+                val steps = available.filterIndexed { index, _ -> checked[index] }.map { it.step }
+                if (steps.isEmpty()) {
+                    Toast.makeText(this, "Pick at least one action.", Toast.LENGTH_SHORT).show()
+                } else {
+                    showProfileNameDialog(steps)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showProfileNameDialog(steps: List<ProfileStep>) {
+        val input = EditText(this).apply {
+            hint = "Profile name"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            setSingleLine(true)
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Create profile")
+            .setMessage("${steps.size} action(s) selected.")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val name = input.text.toString().trim().ifBlank { "Custom Profile" }.take(48)
+                val profile = ShizuluProfile(
+                    name = name,
+                    description = "${steps.size} custom action(s).",
+                    steps = steps,
+                    custom = true
+                )
+                saveCustomProfile(profile)
+                appendLog("Created profile $name with ${steps.size} action(s)")
+                refreshModules()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun emptyState(): View {
@@ -450,12 +604,9 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = buildString {
-                    if (!shizule.isSigned) append("Unsigned shizule. Review commands before running.\n")
-                    append(shizule.description.ifBlank { "No description provided." })
-                }
+                text = shizule.description.ifBlank { "No description provided." }
                 textSize = 14f
-                setTextColor(if (shizule.isSigned) COLORS.body else COLORS.warning)
+                setTextColor(COLORS.body)
                 setLineSpacing(0f, 1.08f)
                 setPadding(0, dp(12), 0, dp(13))
             })
@@ -465,7 +616,7 @@ class MainActivity : Activity() {
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     shizule.actions.forEach { action ->
-                        addView(compactButton(action.label, filled = true) { maybeRunAction(shizule, action) })
+                        addView(compactButton(action.label, filled = true) { runAction(shizule, action) })
                     }
                     addView(compactButton("Remove", filled = false) {
                         store.delete(shizule)
@@ -494,7 +645,7 @@ class MainActivity : Activity() {
 
         runCatching { Shizule.fromJson(raw) }
             .onSuccess { shizule ->
-                if (shizule.isSigned) installTrusted(raw, shizule) else warnUnsignedInstall(raw, shizule)
+                installTrusted(raw, shizule)
             }
             .onFailure {
                 appendLog("Install failed: ${it.message ?: "invalid shizule"}")
@@ -502,19 +653,10 @@ class MainActivity : Activity() {
             }
     }
 
-    private fun warnUnsignedInstall(raw: String, shizule: Shizule) {
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Unsigned shizule")
-            .setMessage("${shizule.name} has no signature metadata. Only install it if you trust where it came from.\n\nDry Run can preview its commands without changing the device.")
-            .setPositiveButton("Install anyway") { _, _ -> installTrusted(raw, shizule) }
-            .setNegativeButton("Cancel") { _, _ -> appendLog("Canceled unsigned shizule install: ${shizule.name}") }
-            .show()
-    }
-
     private fun installTrusted(raw: String, shizule: Shizule) {
         runCatching { store.install(raw) }
             .onSuccess {
-                appendLog("Installed ${if (shizule.isSigned) "signed" else "unsigned"} shizule ${it.name} (${it.id})")
+                appendLog("Installed shizule ${it.name} (${it.id})")
                 Toast.makeText(this, "Installed ${it.name}", Toast.LENGTH_SHORT).show()
                 refreshModules()
             }
@@ -551,20 +693,6 @@ class MainActivity : Activity() {
             .processNameSuffix("service")
             .version(1)
         Shizuku.bindUserService(args, serviceConnection)
-    }
-
-    private fun maybeRunAction(shizule: Shizule, action: ShizuleAction) {
-        if (shizule.isSigned || dryRunEnabled) {
-            runAction(shizule, action)
-            return
-        }
-
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Run unsigned shizule?")
-            .setMessage("${shizule.name} is unsigned. Review the commands first or enable Dry Run to log them without executing.")
-            .setPositiveButton("Run") { _, _ -> runAction(shizule, action) }
-            .setNegativeButton("Cancel") { _, _ -> appendLog("Canceled unsigned action: ${shizule.name}/${action.label}") }
-            .show()
     }
 
     private fun runAction(shizule: Shizule, action: ShizuleAction) {
@@ -641,6 +769,150 @@ class MainActivity : Activity() {
             val action = shizule.actions.first { it.id == step.actionId }
             runAction(shizule, action)
         }
+    }
+
+    private fun loadCustomProfiles(): List<ShizuluProfile> {
+        val raw = settingsPrefs.getString(KEY_CUSTOM_PROFILES, "[]").orEmpty()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val obj = array.getJSONObject(index)
+                    val stepsArray = obj.getJSONArray("steps")
+                    val steps = buildList {
+                        for (stepIndex in 0 until stepsArray.length()) {
+                            val step = stepsArray.getJSONObject(stepIndex)
+                            add(ProfileStep(step.getString("moduleId"), step.getString("actionId")))
+                        }
+                    }
+                    add(
+                        ShizuluProfile(
+                            name = obj.optString("name", "Custom Profile").take(48),
+                            description = obj.optString("description", "${steps.size} custom action(s).").take(120),
+                            steps = steps,
+                            custom = true
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun saveCustomProfile(profile: ShizuluProfile) {
+        val profiles = loadCustomProfiles() + profile
+        settingsPrefs.edit().putString(KEY_CUSTOM_PROFILES, profilesToJson(profiles).toString()).apply()
+    }
+
+    private fun deleteCustomProfile(profile: ShizuluProfile) {
+        val remaining = loadCustomProfiles().filterNot { it.name == profile.name && it.steps == profile.steps }
+        settingsPrefs.edit().putString(KEY_CUSTOM_PROFILES, profilesToJson(remaining).toString()).apply()
+        appendLog("Deleted profile ${profile.name}")
+        refreshModules()
+    }
+
+    private fun profilesToJson(profiles: List<ShizuluProfile>): JSONArray {
+        return JSONArray().apply {
+            profiles.forEach { profile ->
+                put(JSONObject().apply {
+                    put("name", profile.name)
+                    put("description", profile.description)
+                    put("steps", JSONArray().apply {
+                        profile.steps.forEach { step ->
+                            put(JSONObject().apply {
+                                put("moduleId", step.moduleId)
+                                put("actionId", step.actionId)
+                            })
+                        }
+                    })
+                })
+            }
+        }
+    }
+
+    private fun openBackupCreator() {
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        startActivityForResult(
+            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, "shizulu-backup-$stamp.json")
+            },
+            REQUEST_BACKUP_CREATE
+        )
+    }
+
+    private fun openBackupPicker() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+            },
+            REQUEST_BACKUP_OPEN
+        )
+    }
+
+    private fun writeBackupToUri(uri: Uri) {
+        val backup = JSONObject().apply {
+            put("schema", 1)
+            put("createdAt", timestamp())
+            put("dryRun", dryRunEnabled)
+            put("logs", readLogs())
+            put("customProfiles", profilesToJson(loadCustomProfiles()))
+            put("shizules", JSONArray().apply {
+                store.listRaw().forEach { raw ->
+                    runCatching { put(JSONObject(raw)) }
+                }
+            })
+        }
+
+        runCatching {
+            contentResolver.openOutputStream(uri)?.use { stream ->
+                stream.write(backup.toString(2).toByteArray(Charsets.UTF_8))
+            } ?: error("Could not open backup file.")
+        }
+            .onSuccess {
+                appendLog("Backup exported")
+                Toast.makeText(this, "Backup exported", Toast.LENGTH_SHORT).show()
+            }
+            .onFailure {
+                appendLog("Backup failed: ${it.message ?: it.javaClass.simpleName}")
+                Toast.makeText(this, "Backup failed", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun restoreBackupFromUri(uri: Uri) {
+        val raw = contentResolver.openInputStream(uri)?.use { stream ->
+            stream.bufferedReader(Charsets.UTF_8).readText()
+        } ?: return
+
+        runCatching {
+            val backup = JSONObject(raw)
+            require(backup.optInt("schema", 0) == 1) { "Unsupported backup schema." }
+
+            val shizules = backup.optJSONArray("shizules") ?: JSONArray()
+            val rawShizules = buildList {
+                for (index in 0 until shizules.length()) add(shizules.getJSONObject(index).toString())
+            }
+            val installed = store.installAll(rawShizules)
+
+            val customProfiles = backup.optJSONArray("customProfiles") ?: JSONArray()
+            settingsPrefs.edit()
+                .putBoolean(KEY_DRY_RUN, backup.optBoolean("dryRun", dryRunEnabled))
+                .putString(KEY_CUSTOM_PROFILES, customProfiles.toString())
+                .apply()
+            dryRunEnabled = settingsPrefs.getBoolean(KEY_DRY_RUN, false)
+
+            val restoredLogs = backup.optString("logs", "")
+            if (restoredLogs.isNotBlank()) logPrefs.edit().putString(KEY_LOGS, restoredLogs).apply()
+            appendLog("Backup restored: $installed shizule(s), ${customProfiles.length()} custom profile(s)")
+            renderDryRun()
+            refreshModules()
+            Toast.makeText(this, "Backup restored", Toast.LENGTH_SHORT).show()
+        }
+            .onFailure {
+                appendLog("Restore failed: ${it.message ?: it.javaClass.simpleName}")
+                Toast.makeText(this, it.message ?: "Restore failed", Toast.LENGTH_LONG).show()
+            }
     }
 
     private fun showOutput(title: String, output: String) {
@@ -786,8 +1058,11 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_IMPORT = 42
         private const val REQUEST_SHIZUKU = 43
+        private const val REQUEST_BACKUP_CREATE = 44
+        private const val REQUEST_BACKUP_OPEN = 45
         private const val KEY_LOGS = "logs"
         private const val KEY_DRY_RUN = "dry_run"
+        private const val KEY_CUSTOM_PROFILES = "custom_profiles"
         private const val MAX_LOG_LINES = 160
 
         private val PROFILES = listOf(
@@ -797,7 +1072,8 @@ class MainActivity : Activity() {
                 steps = listOf(
                     ProfileStep("com.shizulu.sample.animation_tuner", "fast"),
                     ProfileStep("com.shizulu.sample.display_comfort_pack", "comfort")
-                )
+                ),
+                custom = false
             ),
             ShizuluProfile(
                 name = "Clean Pixel",
@@ -805,7 +1081,8 @@ class MainActivity : Activity() {
                 steps = listOf(
                     ProfileStep("com.shizulu.sample.light_debloat_manager", "apply"),
                     ProfileStep("com.shizulu.sample.animation_tuner", "fast")
-                )
+                ),
+                custom = false
             ),
             ShizuluProfile(
                 name = "Stock Restore",
@@ -814,7 +1091,8 @@ class MainActivity : Activity() {
                     ProfileStep("com.shizulu.sample.light_debloat_manager", "restore"),
                     ProfileStep("com.shizulu.sample.display_comfort_pack", "restore"),
                     ProfileStep("com.shizulu.sample.animation_tuner", "normal")
-                )
+                ),
+                custom = false
             )
         )
     }
@@ -823,10 +1101,16 @@ class MainActivity : Activity() {
 data class ShizuluProfile(
     val name: String,
     val description: String,
-    val steps: List<ProfileStep>
+    val steps: List<ProfileStep>,
+    val custom: Boolean
 )
 
 data class ProfileStep(
     val moduleId: String,
     val actionId: String
+)
+
+data class ProfileChoice(
+    val label: String,
+    val step: ProfileStep
 )

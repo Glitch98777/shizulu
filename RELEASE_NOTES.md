@@ -6,12 +6,13 @@ Initial public release of Shizulu, a rootless Android shizule manager powered by
 
 - Install `.json` shizules from Android's file picker.
 - Run shizule actions through a Shizuku `UserService` with ADB/shell privileges.
-- Warn for unsigned shizules before install and execution.
 - Dry Run mode to preview/log commands without modifying the device.
 - Profiles for grouped module actions:
   - Comfort Setup
   - Clean Pixel
   - Stock Restore
+- Custom profile creation from installed shizule actions.
+- JSON backup export and restore for shizules, custom profiles, dry-run state, and logs.
 - Persistent Logs screen for command exits, failures, imports, dry runs, and canceled actions.
 - Polished manager-style UI and custom Shizulu app icon.
 

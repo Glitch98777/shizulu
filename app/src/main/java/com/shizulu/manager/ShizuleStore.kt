@@ -21,6 +21,24 @@ class ShizuleStore(private val context: Context) {
             ?: emptyList()
     }
 
+    fun listRaw(): List<String> {
+        if (!dir.exists()) return emptyList()
+        return dir.listFiles { file -> file.extension == "json" }
+            ?.mapNotNull { file -> runCatching { file.readText(Charsets.UTF_8) }.getOrNull() }
+            ?: emptyList()
+    }
+
+    fun installAll(rawShizules: List<String>): Int {
+        var installed = 0
+        rawShizules.forEach { raw ->
+            runCatching {
+                install(raw)
+                installed++
+            }
+        }
+        return installed
+    }
+
     fun delete(shizule: Shizule) {
         File(dir, "${shizule.id}.json").delete()
     }
