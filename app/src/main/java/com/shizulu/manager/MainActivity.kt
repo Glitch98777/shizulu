@@ -1253,8 +1253,11 @@ class MainActivity : Activity() {
                 settingsPrefs.edit()
                     .putString(KEY_ADB_PAIRING_CODE, pairingCode)
                     .putInt(KEY_ADB_PAIR_PORT, port)
+                    .apply {
+                        if (port > 0) putInt(KEY_ADB_CONNECT_PORT, port) else remove(KEY_ADB_CONNECT_PORT)
+                    }
                     .apply()
-                appendLog("Wireless ADB config saved: code=${pairingCode.maskPairingCode()} port=$port")
+                appendLog("Wireless ADB config saved: code=${pairingCode.maskPairingCode()} port=$port cached=${if (port > 0) port else "cleared"}")
                 renderStatus()
             }
             .setNegativeButton("Cancel", null)
@@ -2020,6 +2023,7 @@ class MainActivity : Activity() {
         private const val KEY_WIRELESS_ADB_KEEP_ALIVE = "wireless_adb_keep_alive"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
+        private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
