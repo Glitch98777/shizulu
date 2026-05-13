@@ -464,7 +464,7 @@ class MainActivity : Activity() {
             moduleCount = TextView(context).apply {
                 textSize = 13f
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(COLORS.secondary)
+                setTextColor(COLORS.ink)
                 gravity = Gravity.CENTER
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 background = roundedRect(COLORS.secondarySoft, dp(16))
@@ -1994,9 +1994,8 @@ class MainActivity : Activity() {
 
     private fun setChip(chip: TextView, label: String, positive: Boolean) {
         val bg = if (positive) COLORS.successSoft else COLORS.warningSoft
-        val fg = if (positive) COLORS.success else COLORS.warning
         chip.text = label
-        chip.setTextColor(fg)
+        chip.setTextColor(COLORS.ink)
         chip.background = roundedRect(bg, dp(16))
     }
 
