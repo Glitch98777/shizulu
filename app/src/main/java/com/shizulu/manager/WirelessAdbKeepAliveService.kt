@@ -10,9 +10,11 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import java.util.concurrent.atomic.AtomicBoolean
 
 class WirelessAdbKeepAliveService : Service() {
     private val handler = Handler(Looper.getMainLooper())
+    private val verifying = AtomicBoolean(false)
     private val heartbeat = object : Runnable {
         override fun run() {
             verifyWirelessAdb()
@@ -54,11 +56,14 @@ class WirelessAdbKeepAliveService : Service() {
         }
 
         Thread {
+            if (!verifying.compareAndSet(false, true)) return@Thread
             val status = runCatching {
                 WirelessAdbRunner(applicationContext).test(pairingCode, port)
-                "Wireless ADB is paired and ready"
+                "Wireless ADB is connected"
             }.getOrElse {
-                "Wireless ADB keep-alive waiting for pairing"
+                "Wireless ADB keep-alive waiting for connection"
+            }.also {
+                verifying.set(false)
             }
             Handler(Looper.getMainLooper()).post { updateNotification(status) }
         }.start()

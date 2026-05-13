@@ -17,13 +17,9 @@ class WirelessAdbRunner(private val context: Context) {
         require(pairingPort > 0) { "Pairing port is required." }
 
         val log = StringBuilder()
-        pair(pairingCode, pairingPort, log)
-        val connectPort = discoverConnectPort(log)
-        val adb = Kadb.tryConnection(ADB_HOST, connectPort)
-            ?: error("Could not connect to Wireless ADB on $ADB_HOST:$connectPort.")
+        val adb = connect(pairingCode, pairingPort, log)
         adb.use {
             val response = adb.shell("id; getprop ro.product.model")
-            log.append("Connected to Wireless ADB on ").append(ADB_HOST).append(':').append(connectPort).append('\n')
             log.append("exit=").append(response.exitCode).append('\n')
             log.append(response.allOutput.trim())
         }
@@ -35,13 +31,9 @@ class WirelessAdbRunner(private val context: Context) {
         require(pairingPort > 0) { "Pairing port is required." }
 
         val output = StringBuilder()
-        pair(pairingCode, pairingPort, output)
-        val connectPort = discoverConnectPort(output)
-
-        val adb = Kadb.tryConnection(ADB_HOST, connectPort)
-            ?: error("Could not connect to Wireless ADB on $ADB_HOST:$connectPort.")
+        val adb = connect(pairingCode, pairingPort, output)
         adb.use {
-            output.append("Connected to Wireless ADB on ").append(ADB_HOST).append(':').append(connectPort).append("\n\n")
+            output.append('\n')
             action.commands.forEachIndexed { index, command ->
                 val wrapped = command.exec.wrapForShizulu(moduleId)
                 output.append("$ ").append(command.exec).append('\n')
@@ -54,6 +46,52 @@ class WirelessAdbRunner(private val context: Context) {
         }
 
         return WirelessAdbResult(output.toString().trim())
+    }
+
+    private fun connect(pairingCode: String, pairingPort: Int, log: StringBuilder): Kadb {
+        connectUsingCachedOrDiscoveredPort(log)?.let { return it }
+
+        log.append("No reusable Wireless ADB connection found; trying fresh pairing.\n")
+        pair(pairingCode, pairingPort, log)
+        Thread.sleep(PAIRING_SETTLE_MS)
+
+        connectUsingCachedOrDiscoveredPort(log)?.let { return it }
+        error("Could not connect to Wireless ADB. Use a fresh pairing code and the pairing port from Android's Wireless debugging dialog, then try again.")
+    }
+
+    private fun connectUsingCachedOrDiscoveredPort(log: StringBuilder): Kadb? {
+        val tried = mutableSetOf<Int>()
+        cachedConnectPort().takeIf { it > 0 }?.let { cachedPort ->
+            tried += cachedPort
+            tryConnect(cachedPort, "cached", log)?.let { return it }
+        }
+
+        val discoveredPort = discoverConnectPort(log)
+        if (discoveredPort != null && tried.add(discoveredPort)) {
+            tryConnect(discoveredPort, "discovered", log)?.let { return it }
+        }
+
+        return null
+    }
+
+    private fun tryConnect(port: Int, source: String, log: StringBuilder): Kadb? {
+        val adb = Kadb.tryConnection(ADB_HOST, port)
+        return if (adb != null) {
+            saveConnectPort(port)
+            log.append("Connected to Wireless ADB on ")
+                .append(ADB_HOST)
+                .append(':')
+                .append(port)
+                .append(" using ")
+                .append(source)
+                .append(" trust.\n")
+            adb
+        } else {
+            log.append("Wireless ADB ").append(source).append(" port ")
+                .append(port)
+                .append(" was not reachable.\n")
+            null
+        }
     }
 
     private fun pair(pairingCode: String, pairingPort: Int, log: StringBuilder) {
@@ -71,7 +109,7 @@ class WirelessAdbRunner(private val context: Context) {
             }
     }
 
-    private fun discoverConnectPort(log: StringBuilder): Int {
+    private fun discoverConnectPort(log: StringBuilder): Int? {
         val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val multicastLock = wifiManager?.createMulticastLock("shizulu-adb-mdns")?.apply {
@@ -86,11 +124,17 @@ class WirelessAdbRunner(private val context: Context) {
 
         val resolveListener = object : NsdManager.ResolveListener {
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                log.append("Could not resolve Wireless ADB service ")
+                    .append(serviceInfo.serviceName)
+                    .append(" (")
+                    .append(errorCode)
+                    .append(").\n")
                 resolving.set(false)
             }
 
             override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
                 foundPort.set(serviceInfo.port)
+                saveConnectPort(serviceInfo.port)
                 log.append("Discovered Wireless ADB service ")
                     .append(serviceInfo.serviceName)
                     .append(" on port ")
@@ -102,7 +146,10 @@ class WirelessAdbRunner(private val context: Context) {
 
         val discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) = Unit
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) = latch.countDown()
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                log.append("Wireless ADB discovery failed to start (").append(errorCode).append(").\n")
+                latch.countDown()
+            }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
             override fun onDiscoveryStopped(serviceType: String) = Unit
             override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
@@ -125,7 +172,22 @@ class WirelessAdbRunner(private val context: Context) {
             runCatching { multicastLock?.release() }
         }
 
-        return foundPort.get() ?: error("Could not find Wireless ADB connect service. Keep Wireless debugging open and on the same Wi-Fi network, then try again.")
+        return foundPort.get().also { port ->
+            if (port == null) {
+                log.append("Could not find Wireless ADB connect service. Keep Wireless debugging enabled and try again.\n")
+            }
+        }
+    }
+
+    private fun cachedConnectPort(): Int {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_ADB_CONNECT_PORT, 0)
+    }
+
+    private fun saveConnectPort(port: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_ADB_CONNECT_PORT, port)
+            .apply()
     }
 
     private fun String.wrapForShizulu(moduleId: String): String {
@@ -142,6 +204,9 @@ class WirelessAdbRunner(private val context: Context) {
         private const val ADB_HOST = "127.0.0.1"
         private const val ADB_CONNECT_SERVICE = "_adb-tls-connect._tcp."
         private const val DISCOVERY_TIMEOUT_MS = 8_000L
+        private const val PAIRING_SETTLE_MS = 700L
+        private const val PREFS = "shizulu_settings"
+        private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
     }
 }
 
