@@ -1,5 +1,6 @@
 package com.shizulu.manager
 
+import android.Manifest
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
@@ -14,10 +15,12 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
@@ -65,6 +68,8 @@ class MainActivity : Activity() {
     private lateinit var updaterButton: TextView
     private lateinit var lightModeButton: TextView
     private lateinit var darkModeButton: TextView
+    private lateinit var keepAliveButton: TextView
+    private lateinit var batteryButton: TextView
     private lateinit var profilesList: LinearLayout
     private lateinit var moduleList: LinearLayout
     private lateinit var contentHost: FrameLayout
@@ -128,6 +133,11 @@ class MainActivity : Activity() {
         Shizuku.removeBinderDeadListener(binderDeadListener)
         executor.shutdownNow()
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (currentPage == Page.TOOLS && ::contentHost.isInitialized) showPage(Page.TOOLS)
     }
 
     @Deprecated("Kept for the platform document picker callback.")
@@ -465,6 +475,7 @@ class MainActivity : Activity() {
 
             addView(executionModePanel())
             addView(wirelessAdbPanel(), spacedParams(top = 10))
+            addView(persistencePanel(), spacedParams(top = 10))
             addView(updaterPanel(), spacedParams(top = 10))
             addView(appearancePanel(), spacedParams(top = 10))
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
@@ -534,6 +545,46 @@ class MainActivity : Activity() {
                 addView(compactButton("Open Settings", filled = false) { openDeveloperSettings() }, LinearLayout.LayoutParams(0, dp(42), 1f))
                 addView(compactButton("Configure", filled = true) { showWirelessAdbConfigDialog() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
                 addView(compactButton("Test", filled = false) { testWirelessAdbBackend() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+            })
+        }
+    }
+
+    private fun persistencePanel(): View {
+        val keepAliveEnabled = settingsPrefs.getBoolean(KEY_WIRELESS_ADB_KEEP_ALIVE, false)
+        val batteryIgnored = batteryOptimizationIgnored()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = "Persistent ADB"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            addView(TextView(context).apply {
+                text = if (keepAliveEnabled) {
+                    "Foreground keep-alive is on. Shizulu can stay ready after the recent-app card is closed."
+                } else {
+                    "Keep Wireless ADB available with a foreground service and disable battery optimization for Shizulu."
+                }
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                keepAliveButton = compactButton(if (keepAliveEnabled) "Keep Alive: On" else "Keep Alive: Off", filled = keepAliveEnabled) {
+                    setWirelessAdbKeepAlive(!settingsPrefs.getBoolean(KEY_WIRELESS_ADB_KEEP_ALIVE, false))
+                }
+                batteryButton = compactButton(if (batteryIgnored) "Battery: Allowed" else "Allow Battery", filled = batteryIgnored) {
+                    requestBatteryOptimizationExemption()
+                }
+                addView(keepAliveButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(batteryButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
             })
         }
     }
@@ -1026,6 +1077,49 @@ class MainActivity : Activity() {
             startActivity(devSettings)
         }.onFailure {
             startActivity(settings)
+        }
+    }
+
+    private fun setWirelessAdbKeepAlive(enabled: Boolean) {
+        settingsPrefs.edit().putBoolean(KEY_WIRELESS_ADB_KEEP_ALIVE, enabled).apply()
+        if (enabled) {
+            requestNotificationPermissionIfNeeded()
+            requestBatteryOptimizationExemption()
+            WirelessAdbKeepAliveService.start(this)
+            appendLog("Wireless ADB keep-alive enabled")
+            Toast.makeText(this, "Wireless ADB keep-alive enabled", Toast.LENGTH_SHORT).show()
+        } else {
+            WirelessAdbKeepAliveService.stop(this)
+            appendLog("Wireless ADB keep-alive disabled")
+            Toast.makeText(this, "Wireless ADB keep-alive disabled", Toast.LENGTH_SHORT).show()
+        }
+        if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
+    }
+
+    private fun batteryOptimizationIgnored(): Boolean {
+        val powerManager = getSystemService(PowerManager::class.java)
+        return powerManager?.isIgnoringBatteryOptimizations(packageName) == true
+    }
+
+    private fun requestBatteryOptimizationExemption() {
+        if (batteryOptimizationIgnored()) {
+            Toast.makeText(this, "Battery optimization already disabled for Shizulu", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        }.onFailure {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 
@@ -1724,6 +1818,7 @@ class MainActivity : Activity() {
         private const val REQUEST_SHIZUKU = 43
         private const val REQUEST_BACKUP_CREATE = 44
         private const val REQUEST_BACKUP_OPEN = 45
+        private const val REQUEST_NOTIFICATIONS = 46
         private const val KEY_LOGS = "logs"
         private const val KEY_DRY_RUN = "dry_run"
         private const val KEY_CUSTOM_PROFILES = "custom_profiles"
@@ -1732,6 +1827,7 @@ class MainActivity : Activity() {
         private const val KEY_ACCENT_THEME = "accent_theme"
         private const val KEY_UPDATER_STATUS = "updater_status"
         private const val KEY_LATEST_RELEASE = "latest_release"
+        private const val KEY_WIRELESS_ADB_KEEP_ALIVE = "wireless_adb_keep_alive"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val MAX_LOG_LINES = 160
