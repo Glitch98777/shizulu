@@ -144,7 +144,7 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_IMPORT && resultCode == RESULT_OK) {
-            data?.data?.let(::installFromUri)
+            data?.let(::installFromPickerResult)
         }
         if (requestCode == REQUEST_BACKUP_CREATE && resultCode == RESULT_OK) {
             data?.data?.let(::writeBackupToUri)
@@ -1025,37 +1025,80 @@ class MainActivity : Activity() {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "*/*"
                 putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/json", "text/plain"))
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             },
             REQUEST_IMPORT
         )
     }
 
+    private fun installFromPickerResult(data: Intent) {
+        val uris = buildList {
+            data.clipData?.let { clip ->
+                for (index in 0 until clip.itemCount) {
+                    clip.getItemAt(index).uri?.let(::add)
+                }
+            }
+            data.data?.let { single ->
+                if (none { it == single }) add(single)
+            }
+        }
+
+        if (uris.isEmpty()) {
+            Toast.makeText(this, "No shizule selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (uris.size == 1) {
+            installFromUri(uris.first(), refreshAfterInstall = true)
+            return
+        }
+
+        var installed = 0
+        var failed = 0
+        uris.forEach { uri ->
+            if (installFromUri(uri, refreshAfterInstall = false, showToast = false)) installed++ else failed++
+        }
+        appendLog("Batch import complete: $installed installed, $failed failed")
+        Toast.makeText(this, "Installed $installed shizule(s)${if (failed > 0) ", $failed failed" else ""}", Toast.LENGTH_LONG).show()
+        refreshModules()
+    }
+
     private fun installFromUri(uri: Uri) {
+        installFromUri(uri, refreshAfterInstall = true)
+    }
+
+    private fun installFromUri(uri: Uri, refreshAfterInstall: Boolean, showToast: Boolean = true): Boolean {
         val raw = contentResolver.openInputStream(uri)?.use { stream ->
             stream.bufferedReader(Charsets.UTF_8).readText()
-        } ?: return
+        } ?: return false
 
-        runCatching { Shizule.fromJson(raw) }
+        return runCatching { Shizule.fromJson(raw) }
             .onSuccess { shizule ->
-                installTrusted(raw, shizule)
+                installTrusted(raw, shizule, refreshAfterInstall, showToast)
             }
             .onFailure {
                 appendLog("Install failed: ${it.message ?: "invalid shizule"}")
-                Toast.makeText(this, it.message ?: "Invalid shizule", Toast.LENGTH_LONG).show()
+                if (showToast) Toast.makeText(this, it.message ?: "Invalid shizule", Toast.LENGTH_LONG).show()
             }
+            .isSuccess
     }
 
     private fun installTrusted(raw: String, shizule: Shizule) {
-        runCatching { store.install(raw) }
+        installTrusted(raw, shizule, refreshAfterInstall = true, showToast = true)
+    }
+
+    private fun installTrusted(raw: String, shizule: Shizule, refreshAfterInstall: Boolean, showToast: Boolean): Boolean {
+        return runCatching { store.install(raw) }
             .onSuccess {
                 appendLog("Installed shizule ${it.name} (${it.id})")
-                Toast.makeText(this, "Installed ${it.name}", Toast.LENGTH_SHORT).show()
-                refreshModules()
+                if (showToast) Toast.makeText(this, "Installed ${it.name}", Toast.LENGTH_SHORT).show()
+                if (refreshAfterInstall) refreshModules()
             }
             .onFailure {
                 appendLog("Install failed: ${it.message ?: "invalid shizule"}")
-                Toast.makeText(this, it.message ?: "Invalid shizule", Toast.LENGTH_LONG).show()
+                if (showToast) Toast.makeText(this, it.message ?: "Invalid shizule", Toast.LENGTH_LONG).show()
             }
+            .isSuccess
     }
 
     private fun requestShizukuPermission() {

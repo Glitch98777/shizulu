@@ -5,6 +5,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 ## Features
 
 - Install `.json` shizules from Android's file picker.
+- Select and install multiple `.json` shizules at once from the file picker.
 - Run shizule actions through a Shizuku `UserService` with ADB/shell privileges.
 - Backend selection for Shizuku and standalone Wireless ADB execution.
 - Wireless ADB setup surface now only asks for the pairing code and port from Android's pairing dialog.
