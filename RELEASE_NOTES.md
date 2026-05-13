@@ -22,6 +22,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Custom profile creation from installed shizule actions.
 - JSON backup export and restore for shizules, custom profiles, dry-run state, and logs.
 - App updater in Tools for checking GitHub releases and installing newer APK builds without allowing stale release downgrades.
+- Release publishing now builds from full git history so Android version codes keep increasing.
 - Persistent Logs screen for command exits, failures, imports, dry runs, and canceled actions.
 - Polished manager-style UI and custom Shizulu app icon.
 

@@ -1609,7 +1609,7 @@ class MainActivity : Activity() {
         }
         val compareUrl = String.format(Locale.US, GITHUB_COMPARE_URL, current, latest)
         val status = JSONObject(httpGet(compareUrl)).optString("status")
-        return status.equals("behind", ignoreCase = true)
+        return status.equals("ahead", ignoreCase = true)
     }
 
     private fun httpGet(url: String): String {
