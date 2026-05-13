@@ -292,7 +292,7 @@ class MainActivity : Activity() {
                 })
 
                 addView(TextView(context).apply {
-                    text = "Rootless modules powered by Shizuku"
+                    text = "Rootless modules over Shizuku or Wireless ADB"
                     textSize = 14f
                     setTextColor(COLORS.muted)
                     includeFontPadding = false

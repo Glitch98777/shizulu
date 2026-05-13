@@ -1,10 +1,10 @@
 # Shizulu
 
-Shizulu is a rootless Android module manager powered by [Shizuku](https://shizuku.rikka.app/). It installs small JSON modules called **shizules** and runs their declared actions through Shizuku's ADB/shell identity instead of requiring Magisk or root.
+Shizulu is a rootless Android module manager for Shizuku and standalone Wireless ADB. It installs small JSON modules called **shizules** and runs their declared actions with ADB/shell-level privileges instead of requiring Magisk or root.
 
-Think of it as an experimental, no-root cousin of a Magisk-style module manager: shizules can tune Android settings, grant ADB-grantable permissions, run diagnostics, apply display comfort profiles, or disable optional packages for the current user. Shizulu does not bypass Android security boundaries; it only uses capabilities available to Shizuku/ADB shell.
+Think of it as an experimental, no-root cousin of a Magisk-style module manager: shizules can tune Android settings, grant ADB-grantable permissions, run diagnostics, apply display comfort profiles, or disable optional packages for the current user. Shizulu does not bypass Android security boundaries; it only uses capabilities available to Shizuku or ADB shell.
 
-This is not a replacement build of the official Shizuku app. Shizulu is a separate manager app that depends on Shizuku being installed, running, and granted to Shizulu.
+This is not a replacement build of the official Shizuku app. Shizulu is a separate manager app that can use either Shizuku or its standalone Wireless ADB backend.
 
 ## Highlights
 
@@ -12,7 +12,7 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 - Install and remove shizules from private app storage.
 - Request Shizuku permission and bind a Shizuku `UserService`.
 - Run shizule commands as the ADB/shell identity.
-- Choose between the fully working Shizuku backend and an experimental Wireless ADB backend surface.
+- Choose between the Shizuku backend and standalone Wireless ADB execution.
 - Dry Run mode previews and logs commands without executing them.
 - Profiles run grouped module actions like `Comfort Setup`, `Clean Pixel`, and `Stock Restore`.
 - Create custom profiles from installed shizule actions.
@@ -83,7 +83,7 @@ The optional `signature` metadata is informational for now; it is a trust signal
 
 ## Safety Model
 
-Shizulu is powerful because Shizuku is powerful. A shizule can run shell commands, so treat modules like scripts:
+Shizulu is powerful because Shizuku and Wireless ADB expose shell-level capabilities. A shizule can run shell commands, so treat modules like scripts:
 
 - Use Dry Run before running a new shizule.
 - Prefer shizules with clear, reversible actions.

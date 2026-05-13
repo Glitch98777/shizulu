@@ -1,6 +1,6 @@
 # Shizulu 0.1.0
 
-Initial public release of Shizulu, a rootless Android shizule manager powered by Shizuku.
+Initial public release of Shizulu, a rootless Android shizule manager for Shizuku and standalone Wireless ADB.
 
 ## Features
 
