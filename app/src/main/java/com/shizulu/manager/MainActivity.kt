@@ -55,10 +55,10 @@ class MainActivity : Activity() {
     private lateinit var profilesList: LinearLayout
     private lateinit var moduleList: LinearLayout
     private lateinit var contentHost: FrameLayout
-    private lateinit var homeNav: TextView
-    private lateinit var modulesNav: TextView
-    private lateinit var profilesNav: TextView
-    private lateinit var toolsNav: TextView
+    private lateinit var homeNav: LinearLayout
+    private lateinit var modulesNav: LinearLayout
+    private lateinit var profilesNav: LinearLayout
+    private lateinit var toolsNav: LinearLayout
     private var service: IShizuluService? = null
     private var dryRunEnabled = false
     private var currentPage = Page.HOME
@@ -207,10 +207,10 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(8), dp(10), dp(10))
             background = roundedRect(COLORS.surface, dp(0), COLORS.outline, 1)
 
-            homeNav = navButton("⌂\nHome") { showPage(Page.HOME) }
-            modulesNav = navButton("▦\nModules") { showPage(Page.MODULES) }
-            profilesNav = navButton("▱\nProfiles") { showPage(Page.PROFILES) }
-            toolsNav = navButton("⚙\nTools") { showPage(Page.TOOLS) }
+            homeNav = navButton("⌂", "Home") { showPage(Page.HOME) }
+            modulesNav = navButton("▣", "Modules") { showPage(Page.MODULES) }
+            profilesNav = navButton("▰", "Profiles") { showPage(Page.PROFILES) }
+            toolsNav = navButton("⚙", "Tools") { showPage(Page.TOOLS) }
 
             addView(homeNav, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(modulesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
@@ -219,16 +219,29 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun navButton(label: String, onClick: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = label
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
+    private fun navButton(icon: String, label: String, onClick: () -> Unit): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setLineSpacing(0f, 0.95f)
+            setPadding(0, dp(4), 0, dp(3))
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
+            addView(TextView(context).apply {
+                text = icon
+                textSize = 23f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+            })
+            addView(TextView(context).apply {
+                text = label
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setPadding(0, dp(3), 0, 0)
+            })
         }
     }
 
@@ -240,8 +253,11 @@ class MainActivity : Activity() {
         setNavState(toolsNav, currentPage == Page.TOOLS)
     }
 
-    private fun setNavState(view: TextView, selected: Boolean) {
-        view.setTextColor(if (selected) COLORS.primary else COLORS.muted)
+    private fun setNavState(view: LinearLayout, selected: Boolean) {
+        val color = if (selected) COLORS.primary else COLORS.muted
+        for (index in 0 until view.childCount) {
+            (view.getChildAt(index) as? TextView)?.setTextColor(color)
+        }
         view.background = if (selected) roundedRect(COLORS.primarySoft, dp(8)) else null
     }
 
