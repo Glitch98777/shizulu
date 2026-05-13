@@ -17,6 +17,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Persistent ADB tools for foreground keep-alive and battery optimization exemption.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
+- Dark mode now uses a classic charcoal-gray palette instead of near-black AMOLED styling.
 - Theme contrast tuning so light mode keeps dark text on pale accents and dark mode keeps white text on dark accents.
 - Tools footer buttons now keep readable black text in light mode and white text in dark mode.
 - The Shizuku grant/bind button now uses readable black text in light mode and white text in dark mode.

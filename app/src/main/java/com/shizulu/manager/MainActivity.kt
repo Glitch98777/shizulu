@@ -2215,25 +2215,28 @@ enum class AccentTheme(val label: String, private val lightPrimary: Int, private
         val dark = mode == AppearanceMode.DARK
         val primary = if (dark) darkPrimary else lightPrimary
         val onPrimary = if (dark) 0xFFFFFFFF.toInt() else 0xFF111827.toInt()
+        val darkBackground = 0xFF202124.toInt()
+        val darkSurface = 0xFF2B2C30.toInt()
+        val darkSurfaceAlt = 0xFF34363B.toInt()
         return ThemePalette(
             dark = dark,
-            background = if (dark) 0xFF0D111A.toInt() else 0xFFF7F9FC.toInt(),
-            surface = if (dark) 0xFF151B26.toInt() else 0xFFFFFFFF.toInt(),
-            surfaceAlt = if (dark) 0xFF1C2431.toInt() else 0xFFF1F5F9.toInt(),
+            background = if (dark) darkBackground else 0xFFF7F9FC.toInt(),
+            surface = if (dark) darkSurface else 0xFFFFFFFF.toInt(),
+            surfaceAlt = if (dark) darkSurfaceAlt else 0xFFF1F5F9.toInt(),
             ink = if (dark) 0xFFFFFFFF.toInt() else 0xFF111827.toInt(),
-            body = if (dark) 0xFFE5E7EB.toInt() else 0xFF1F2937.toInt(),
-            muted = if (dark) 0xFFC5CEDB.toInt() else 0xFF475569.toInt(),
-            outline = if (dark) 0xFF2A3443.toInt() else 0xFFE1E8F0.toInt(),
-            outlineStrong = if (dark) 0xFF3C485B.toInt() else 0xFFCBD5E1.toInt(),
+            body = if (dark) 0xFFE8EAED.toInt() else 0xFF1F2937.toInt(),
+            muted = if (dark) 0xFFC9CDD3.toInt() else 0xFF475569.toInt(),
+            outline = if (dark) 0xFF45474D.toInt() else 0xFFE1E8F0.toInt(),
+            outlineStrong = if (dark) 0xFF5A5D66.toInt() else 0xFFCBD5E1.toInt(),
             primary = primary,
             onPrimary = onPrimary,
-            primarySoft = if (dark) tint(primary, 0.50f, 0xFF0D111A.toInt()) else tint(primary, 0.48f, 0xFFFFFFFF.toInt()),
-            secondary = if (dark) lighten(0xFF5B21B6.toInt(), 0.44f) else 0xFF5B21B6.toInt(),
-            secondarySoft = if (dark) 0xFF2D2547.toInt() else 0xFFF1EAFF.toInt(),
+            primarySoft = if (dark) tint(primary, 0.32f, darkSurfaceAlt) else tint(primary, 0.48f, 0xFFFFFFFF.toInt()),
+            secondary = if (dark) lighten(0xFF5B21B6.toInt(), 0.52f) else 0xFF5B21B6.toInt(),
+            secondarySoft = if (dark) 0xFF3B344B.toInt() else 0xFFF1EAFF.toInt(),
             success = if (dark) 0xFF86EFAC.toInt() else 0xFF0E7A53.toInt(),
-            successSoft = if (dark) 0xFF12392E.toInt() else 0xFFE4F8EF.toInt(),
+            successSoft = if (dark) 0xFF284237.toInt() else 0xFFE4F8EF.toInt(),
             warning = if (dark) 0xFFFDBA74.toInt() else 0xFF9A5B00.toInt(),
-            warningSoft = if (dark) 0xFF3B2813.toInt() else 0xFFFFF1D6.toInt()
+            warningSoft = if (dark) 0xFF4A3824.toInt() else 0xFFFFF1D6.toInt()
         )
     }
 
