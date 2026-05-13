@@ -391,7 +391,9 @@ class MainActivity : Activity() {
 
                 addView(primaryButton("Install shizule") { openJsonPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-                grantButton = readableSecondaryButton("Grant Shizuku") { requestShizukuPermission() }
+                grantButton = readableSecondaryButton("Grant Shizuku") {
+                    if (executionMode == ExecutionMode.WIRELESS_ADB) showPage(Page.TOOLS) else requestShizukuPermission()
+                }
                 addView(grantButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     leftMargin = dp(10)
                 })
@@ -711,31 +713,57 @@ class MainActivity : Activity() {
             val binderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
             val permissionGranted = binderAlive && hasShizukuPermission()
             val uid = service?.let { runCatching { it.uid }.getOrNull() }
+            val wirelessMode = executionMode == ExecutionMode.WIRELESS_ADB
+            val wirelessConfigured = wirelessAdbConfigured()
 
             if (::statusTitle.isInitialized) {
-                statusTitle.text = when {
-                    !binderAlive -> "Shizuku is not connected"
-                    !permissionGranted -> "Permission needed"
-                    uid == null -> "Ready to bind service"
-                    else -> "Shizulu is ready"
+                statusTitle.text = if (wirelessMode) {
+                    "Wireless ADB mode"
+                } else {
+                    when {
+                        !binderAlive -> "Shizuku is not connected"
+                        !permissionGranted -> "Permission needed"
+                        uid == null -> "Ready to bind service"
+                        else -> "Shizulu is ready"
+                    }
                 }
             }
 
             if (::statusSubtitle.isInitialized) {
-                statusSubtitle.text = when {
-                    !binderAlive -> "Start Shizuku on the phone, then return here."
-                    !permissionGranted -> "Allow Shizulu so modules can use the shell identity."
-                    uid == null -> "Tap Grant Shizuku to connect the manager service."
-                    else -> "User service is bound as uid $uid. Shizules can run."
+                statusSubtitle.text = if (wirelessMode) {
+                    if (wirelessConfigured) {
+                        "Standalone Wireless ADB is selected. Shizules will use ADB privileges without Shizuku."
+                    } else {
+                        "Wireless ADB is selected. Add a pairing code and port in Tools to run shizules."
+                    }
+                } else {
+                    when {
+                        !binderAlive -> "Start Shizuku on the phone, then return here."
+                        !permissionGranted -> "Allow Shizulu so modules can use the shell identity."
+                        uid == null -> "Tap Grant Shizuku to connect the manager service."
+                        else -> "User service is bound as uid $uid. Shizules can run."
+                    }
                 }
             }
 
-            if (::shizukuChip.isInitialized) setChip(shizukuChip, if (binderAlive) "Shizuku running" else "Shizuku offline", binderAlive)
-            if (::permissionChip.isInitialized) setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
-            if (::serviceChip.isInitialized) setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
-            if (::backendChip.isInitialized) setChip(backendChip, executionMode.label, executionMode == ExecutionMode.SHIZUKU || wirelessAdbConfigured())
+            if (wirelessMode) {
+                if (::shizukuChip.isInitialized) setChip(shizukuChip, "Wireless ADB", wirelessConfigured)
+                if (::permissionChip.isInitialized) setChip(permissionChip, if (wirelessConfigured) "Configured" else "Needs pairing", wirelessConfigured)
+                if (::serviceChip.isInitialized) setChip(serviceChip, if (wirelessConfigured) "ADB ready" else "ADB setup", wirelessConfigured)
+            } else {
+                if (::shizukuChip.isInitialized) setChip(shizukuChip, if (binderAlive) "Shizuku running" else "Shizuku offline", binderAlive)
+                if (::permissionChip.isInitialized) setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
+                if (::serviceChip.isInitialized) setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
+            }
+            if (::backendChip.isInitialized) setChip(backendChip, executionMode.label, executionMode == ExecutionMode.SHIZUKU || wirelessConfigured)
 
-            if (::grantButton.isInitialized) grantButton.text = if (permissionGranted) "Bind service" else "Grant Shizuku"
+            if (::grantButton.isInitialized) {
+                grantButton.text = when {
+                    wirelessMode -> "Wireless ADB mode"
+                    permissionGranted -> "Bind service"
+                    else -> "Grant Shizuku"
+                }
+            }
         }
     }
 

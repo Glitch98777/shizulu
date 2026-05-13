@@ -17,6 +17,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - The Shizuku grant/bind button now uses readable black text in light mode and white text in dark mode.
 - Selected bottom navigation tabs now use strong readable text/icons instead of pale accent gray.
 - The Tools bottom navigation icon now uses a crossed-tools shape instead of a sun-like glyph.
+- Home dashboard now shows Wireless ADB mode instead of Shizuku offline when Wireless ADB is selected.
 - Dry Run mode to preview/log commands without modifying the device.
 - Profiles for grouped module actions:
   - Comfort Setup
