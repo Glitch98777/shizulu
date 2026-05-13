@@ -6,9 +6,14 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import com.flyfishxu.kadb.Kadb
 import kotlinx.coroutines.runBlocking
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class WirelessAdbRunner(private val context: Context) {
@@ -71,7 +76,73 @@ class WirelessAdbRunner(private val context: Context) {
             tryConnect(discoveredPort, "discovered", log)?.let { return it }
         }
 
+        scanAndConnect(tried, log)?.let { return it }
         return null
+    }
+
+    private fun scanAndConnect(tried: MutableSet<Int>, log: StringBuilder): Kadb? {
+        log.append("Auto-scan probing ")
+            .append(ADB_HOST)
+            .append(" ports ")
+            .append(PORT_SCAN_START)
+            .append('-')
+            .append(PORT_SCAN_END)
+            .append(".\n")
+
+        val openPorts = scanOpenLocalPorts(tried)
+        if (openPorts.isEmpty()) {
+            log.append("Auto-scan did not find open local ports.\n")
+            return null
+        }
+
+        log.append("Auto-scan found open port(s): ")
+            .append(openPorts.formatPortList())
+            .append('\n')
+
+        openPorts.forEach { port ->
+            if (tried.add(port)) {
+                tryConnect(port, "auto-scan", log)?.let { return it }
+            }
+        }
+
+        log.append("Auto-scan found open port(s), but none completed the ADB handshake.\n")
+        return null
+    }
+
+    private fun scanOpenLocalPorts(excludedPorts: Set<Int>): List<Int> {
+        val openPorts = Collections.synchronizedList(mutableListOf<Int>())
+        val nextPort = AtomicInteger(PORT_SCAN_START)
+        val latch = CountDownLatch(PORT_SCAN_WORKERS)
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(PORT_SCAN_TOTAL_TIMEOUT_MS)
+        val executor = Executors.newFixedThreadPool(PORT_SCAN_WORKERS)
+
+        repeat(PORT_SCAN_WORKERS) {
+            executor.execute {
+                try {
+                    while (System.nanoTime() < deadline) {
+                        val port = nextPort.getAndIncrement()
+                        if (port > PORT_SCAN_END) break
+                        if (port in excludedPorts) continue
+                        if (isLocalPortOpen(port)) openPorts.add(port)
+                    }
+                } finally {
+                    latch.countDown()
+                }
+            }
+        }
+
+        latch.await(PORT_SCAN_TOTAL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        executor.shutdownNow()
+        return openPorts.sorted()
+    }
+
+    private fun isLocalPortOpen(port: Int): Boolean {
+        return runCatching {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(ADB_HOST, port), PORT_SCAN_CONNECT_TIMEOUT_MS)
+            }
+            true
+        }.getOrDefault(false)
     }
 
     private fun tryConnect(port: Int, source: String, log: StringBuilder): Kadb? {
@@ -200,11 +271,26 @@ class WirelessAdbRunner(private val context: Context) {
         return "'${replace("'", "'\"'\"'")}'"
     }
 
+    private fun List<Int>.formatPortList(): String {
+        val shown = take(MAX_REPORTED_SCAN_PORTS)
+        return if (size <= MAX_REPORTED_SCAN_PORTS) {
+            shown.joinToString(", ")
+        } else {
+            shown.joinToString(", ") + ", ... (+${size - shown.size} more)"
+        }
+    }
+
     companion object {
         private const val ADB_HOST = "127.0.0.1"
         private const val ADB_CONNECT_SERVICE = "_adb-tls-connect._tcp."
         private const val DISCOVERY_TIMEOUT_MS = 8_000L
         private const val PAIRING_SETTLE_MS = 700L
+        private const val PORT_SCAN_START = 30_000
+        private const val PORT_SCAN_END = 49_999
+        private const val PORT_SCAN_WORKERS = 48
+        private const val PORT_SCAN_CONNECT_TIMEOUT_MS = 18
+        private const val PORT_SCAN_TOTAL_TIMEOUT_MS = 6_500L
+        private const val MAX_REPORTED_SCAN_PORTS = 10
         private const val PREFS = "shizulu_settings"
         private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
     }

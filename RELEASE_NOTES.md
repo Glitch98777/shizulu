@@ -11,6 +11,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Wireless ADB setup surface now only asks for the pairing code and port from Android's pairing dialog.
 - Wireless ADB mode now pairs with local `adbd`, discovers the connect service with mDNS, and executes shizule commands without Shizuku.
 - Wireless ADB reconnect now tries existing trust and cached connect ports before using a fresh pairing code.
+- Wireless ADB Test now auto-scans likely local connect ports, reports open ports, and tries real ADB handshakes against them.
 - Persistent ADB tools for foreground keep-alive and battery optimization exemption.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
