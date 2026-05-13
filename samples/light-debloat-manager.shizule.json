@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.sample.light_debloat_manager",
+  "name": "Light Debloat Manager",
+  "version": "1.0.0",
+  "description": "Disables common optional Google/Pixel apps for user 0 without uninstalling them. Restore re-enables everything in this profile.",
+  "actions": [
+    {
+      "id": "apply",
+      "label": "Apply",
+      "commands": [
+        {
+          "exec": "pm disable-user --user 0 com.google.android.apps.youtube.music 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.youtube 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.videos 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.apps.tachyon 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.apps.subscriptions.red 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.apps.podcasts 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.apps.magazines 2>/dev/null || true"
+        },
+        {
+          "exec": "pm disable-user --user 0 com.google.android.apps.nbu.paisa.user 2>/dev/null || true"
+        },
+        {
+          "exec": "pm list packages -d | sort"
+        }
+      ]
+    },
+    {
+      "id": "restore",
+      "label": "Restore",
+      "commands": [
+        {
+          "exec": "pm enable com.google.android.apps.youtube.music 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.youtube 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.videos 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.apps.tachyon 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.apps.subscriptions.red 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.apps.podcasts 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.apps.magazines 2>/dev/null || true"
+        },
+        {
+          "exec": "pm enable com.google.android.apps.nbu.paisa.user 2>/dev/null || true"
+        },
+        {
+          "exec": "pm list packages -d | sort"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "label": "Status",
+      "commands": [
+        {
+          "exec": "pm list packages -d | sort"
+        }
+      ]
+    }
+  ]
+}

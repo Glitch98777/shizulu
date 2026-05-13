@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.sample.capability_booster",
+  "name": "Shizulu Capability Booster",
+  "version": "1.0.0",
+  "description": "Gives Shizulu the strongest legitimate ADB-grantable app permissions and app-ops available without root.",
+  "actions": [
+    {
+      "id": "apply",
+      "label": "Apply",
+      "commands": [
+        {
+          "exec": "pm grant com.shizulu.manager android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true"
+        },
+        {
+          "exec": "pm grant com.shizulu.manager android.permission.READ_LOGS 2>/dev/null || true"
+        },
+        {
+          "exec": "pm grant com.shizulu.manager android.permission.DUMP 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager GET_USAGE_STATS allow 2>/dev/null || appops set com.shizulu.manager GET_USAGE_STATS allow 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager MANAGE_EXTERNAL_STORAGE allow 2>/dev/null || appops set com.shizulu.manager MANAGE_EXTERNAL_STORAGE allow 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager RUN_IN_BACKGROUND allow 2>/dev/null || appops set com.shizulu.manager RUN_IN_BACKGROUND allow 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager RUN_ANY_IN_BACKGROUND allow 2>/dev/null || appops set com.shizulu.manager RUN_ANY_IN_BACKGROUND allow 2>/dev/null || true"
+        },
+        {
+          "exec": "dumpsys deviceidle whitelist +com.shizulu.manager 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "restore",
+      "label": "Restore",
+      "commands": [
+        {
+          "exec": "pm revoke com.shizulu.manager android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true"
+        },
+        {
+          "exec": "pm revoke com.shizulu.manager android.permission.READ_LOGS 2>/dev/null || true"
+        },
+        {
+          "exec": "pm revoke com.shizulu.manager android.permission.DUMP 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager GET_USAGE_STATS default 2>/dev/null || appops set com.shizulu.manager GET_USAGE_STATS default 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager MANAGE_EXTERNAL_STORAGE default 2>/dev/null || appops set com.shizulu.manager MANAGE_EXTERNAL_STORAGE default 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager RUN_IN_BACKGROUND default 2>/dev/null || appops set com.shizulu.manager RUN_IN_BACKGROUND default 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set com.shizulu.manager RUN_ANY_IN_BACKGROUND default 2>/dev/null || appops set com.shizulu.manager RUN_ANY_IN_BACKGROUND default 2>/dev/null || true"
+        },
+        {
+          "exec": "dumpsys deviceidle whitelist -com.shizulu.manager 2>/dev/null || true"
+        }
+      ]
+    }
+  ]
+}

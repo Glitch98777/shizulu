@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.sample.animation_tuner",
+  "name": "Animation Tuner",
+  "version": "1.0.0",
+  "description": "Switches Android animation speed between off, fast, normal, and relaxed presets.",
+  "actions": [
+    {
+      "id": "off",
+      "label": "Off",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 0"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 0"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 0"
+        }
+      ]
+    },
+    {
+      "id": "fast",
+      "label": "Fast",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 0.5"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 0.5"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 0.5"
+        }
+      ]
+    },
+    {
+      "id": "normal",
+      "label": "Normal",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 1"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 1"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 1"
+        }
+      ]
+    },
+    {
+      "id": "relaxed",
+      "label": "Relaxed",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 1.5"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 1.5"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 1.5"
+        }
+      ]
+    }
+  ]
+}

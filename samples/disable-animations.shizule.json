@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.sample.disable_animations",
+  "name": "Disable Animations",
+  "version": "1.0.0",
+  "description": "Applies three shell-level settings writes through Shizuku/ADB privileges.",
+  "actions": [
+    {
+      "id": "apply",
+      "label": "Apply",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 0"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 0"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 0"
+        }
+      ]
+    },
+    {
+      "id": "restore",
+      "label": "Restore",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 1"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 1"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 1"
+        }
+      ]
+    }
+  ]
+}

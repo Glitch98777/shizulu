@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.sample.display_comfort_pack",
+  "name": "Display Comfort Pack",
+  "version": "1.0.0",
+  "description": "Applies calmer display settings: show touches off, pointer location off, reduced motion, and stable adaptive sleep defaults where supported.",
+  "actions": [
+    {
+      "id": "comfort",
+      "label": "Comfort",
+      "commands": [
+        {
+          "exec": "settings put system show_touches 0"
+        },
+        {
+          "exec": "settings put system pointer_location 0"
+        },
+        {
+          "exec": "settings put global window_animation_scale 0.5"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 0.5"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 0.5"
+        },
+        {
+          "exec": "settings put secure reduce_bright_colors_activated 1 2>/dev/null || true"
+        },
+        {
+          "exec": "settings put secure adaptive_sleep 0 2>/dev/null || true"
+        },
+        {
+          "exec": "settings put system screen_off_timeout 120000"
+        }
+      ]
+    },
+    {
+      "id": "night",
+      "label": "Night",
+      "commands": [
+        {
+          "exec": "settings put global window_animation_scale 0"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 0"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 0"
+        },
+        {
+          "exec": "settings put secure reduce_bright_colors_activated 1 2>/dev/null || true"
+        },
+        {
+          "exec": "settings put system screen_off_timeout 60000"
+        }
+      ]
+    },
+    {
+      "id": "restore",
+      "label": "Restore",
+      "commands": [
+        {
+          "exec": "settings put system show_touches 0"
+        },
+        {
+          "exec": "settings put system pointer_location 0"
+        },
+        {
+          "exec": "settings put global window_animation_scale 1"
+        },
+        {
+          "exec": "settings put global transition_animation_scale 1"
+        },
+        {
+          "exec": "settings put global animator_duration_scale 1"
+        },
+        {
+          "exec": "settings put secure reduce_bright_colors_activated 0 2>/dev/null || true"
+        },
+        {
+          "exec": "settings put secure adaptive_sleep 1 2>/dev/null || true"
+        },
+        {
+          "exec": "settings put system screen_off_timeout 300000"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "label": "Status",
+      "commands": [
+        {
+          "exec": "settings get global window_animation_scale; settings get global transition_animation_scale; settings get global animator_duration_scale; settings get system screen_off_timeout; settings get secure reduce_bright_colors_activated 2>/dev/null || true; settings get secure adaptive_sleep 2>/dev/null || true"
+        }
+      ]
+    }
+  ]
+}
