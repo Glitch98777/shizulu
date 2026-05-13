@@ -51,16 +51,19 @@ jobs:
           TAG="build-${RUN_NUMBER}"
           TITLE="Shizulu successful build ${RUN_NUMBER}"
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          TESTER_APK="su-bridge-tester/build/outputs/apk/debug/su-bridge-tester-debug.apk"
           NOTES=$(cat <<EOF
           Automated release from a successful build on main.
 
           Commit: ${SHA}
           APK: Shizulu-${TAG}.apk
+          Tester APK: Shizulu-SU-Bridge-Tester-${TAG}.apk
           EOF
           )
 
           cp "$APK" "Shizulu-${TAG}.apk"
-          gh release create "$TAG" "Shizulu-${TAG}.apk" \
+          cp "$TESTER_APK" "Shizulu-SU-Bridge-Tester-${TAG}.apk"
+          gh release create "$TAG" "Shizulu-${TAG}.apk" "Shizulu-SU-Bridge-Tester-${TAG}.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$TITLE" \
             --notes "$NOTES" \
