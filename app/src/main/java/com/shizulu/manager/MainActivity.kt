@@ -996,7 +996,7 @@ class MainActivity : Activity() {
                     text = shizule.version
                     textSize = 12f
                     typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(COLORS.primary)
+                    setTextColor(COLORS.ink)
                     gravity = Gravity.CENTER
                     setPadding(dp(9), dp(5), dp(9), dp(5))
                     background = roundedRect(COLORS.primarySoft, dp(14))

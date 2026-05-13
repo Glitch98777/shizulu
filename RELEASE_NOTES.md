@@ -20,6 +20,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Dark mode now uses a classic charcoal-gray palette instead of near-black AMOLED styling.
 - Dark mode borders are now subtle gray separators instead of bright white outlines.
 - Theme contrast tuning so light mode keeps dark text on pale accents and dark mode keeps white text on dark accents.
+- Module version badges now use readable dark text in light mode and white text in dark mode.
 - Tools footer buttons now keep readable black text in light mode and white text in dark mode.
 - The Shizuku grant/bind button now uses readable black text in light mode and white text in dark mode.
 - Dry Run, Create Profile, and Restore Defaults buttons now keep readable text across default and accent themes.
