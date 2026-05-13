@@ -25,6 +25,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
   - Clean Pixel
   - Stock Restore
 - Custom profile creation from installed shizule actions.
+- Custom profiles can now be deleted with a confirmation dialog.
 - JSON backup export and restore for shizules, custom profiles, dry-run state, and logs.
 - App updater in Tools for checking GitHub releases and installing newer APK builds without allowing stale release downgrades.
 - Release publishing now builds from full git history so Android version codes keep increasing.

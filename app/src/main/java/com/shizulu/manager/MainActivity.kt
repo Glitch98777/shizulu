@@ -862,8 +862,8 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL
                     addView(compactButton("Run", filled = missing == 0) { runProfile(profile) })
                     if (profile.custom) {
-                        addView(compactButton("Remove", filled = false) {
-                            deleteCustomProfile(profile)
+                        addView(compactButton("Delete", filled = false) {
+                            confirmDeleteCustomProfile(profile)
                         }, rowGapParams())
                     }
                 })
@@ -1394,10 +1394,25 @@ class MainActivity : Activity() {
         settingsPrefs.edit().putString(KEY_CUSTOM_PROFILES, profilesToJson(profiles).toString()).apply()
     }
 
+    private fun confirmDeleteCustomProfile(profile: ShizuluProfile) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Delete profile?")
+            .setMessage("${profile.name} will be removed from Shizulu. This does not delete any installed shizules.")
+            .setPositiveButton("Delete") { _, _ -> deleteCustomProfile(profile) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun deleteCustomProfile(profile: ShizuluProfile) {
-        val remaining = loadCustomProfiles().filterNot { it.name == profile.name && it.steps == profile.steps }
+        val before = loadCustomProfiles()
+        val remaining = before.filterNot { it.name == profile.name && it.steps == profile.steps }
+        if (remaining.size == before.size) {
+            Toast.makeText(this, "Profile was already removed", Toast.LENGTH_SHORT).show()
+            return
+        }
         settingsPrefs.edit().putString(KEY_CUSTOM_PROFILES, profilesToJson(remaining).toString()).apply()
         appendLog("Deleted profile ${profile.name}")
+        Toast.makeText(this, "Profile deleted", Toast.LENGTH_SHORT).show()
         refreshModules()
     }
 
