@@ -6,7 +6,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -207,10 +210,10 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(8), dp(10), dp(10))
             background = roundedRect(COLORS.surface, dp(0), COLORS.outline, 1)
 
-            homeNav = navButton("⌂", "Home") { showPage(Page.HOME) }
-            modulesNav = navButton("▣", "Modules") { showPage(Page.MODULES) }
-            profilesNav = navButton("▰", "Profiles") { showPage(Page.PROFILES) }
-            toolsNav = navButton("⚙", "Tools") { showPage(Page.TOOLS) }
+            homeNav = navButton(Page.HOME, "Home") { showPage(Page.HOME) }
+            modulesNav = navButton(Page.MODULES, "Modules") { showPage(Page.MODULES) }
+            profilesNav = navButton(Page.PROFILES, "Profiles") { showPage(Page.PROFILES) }
+            toolsNav = navButton(Page.TOOLS, "Tools") { showPage(Page.TOOLS) }
 
             addView(homeNav, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(modulesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
@@ -219,7 +222,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun navButton(icon: String, label: String, onClick: () -> Unit): LinearLayout {
+    private fun navButton(page: Page, label: String, onClick: () -> Unit): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -227,13 +230,7 @@ class MainActivity : Activity() {
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
-            addView(TextView(context).apply {
-                text = icon
-                textSize = 23f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-            })
+            addView(NavIconView(context, page), LinearLayout.LayoutParams(dp(28), dp(24)))
             addView(TextView(context).apply {
                 text = label
                 textSize = 11f
@@ -256,7 +253,10 @@ class MainActivity : Activity() {
     private fun setNavState(view: LinearLayout, selected: Boolean) {
         val color = if (selected) COLORS.primary else COLORS.muted
         for (index in 0 until view.childCount) {
-            (view.getChildAt(index) as? TextView)?.setTextColor(color)
+            when (val child = view.getChildAt(index)) {
+                is TextView -> child.setTextColor(color)
+                is NavIconView -> child.setIconColor(color)
+            }
         }
         view.background = if (selected) roundedRect(COLORS.primarySoft, dp(8)) else null
     }
@@ -1224,4 +1224,96 @@ enum class Page {
     MODULES,
     PROFILES,
     TOOLS
+}
+
+class NavIconView(
+    context: android.content.Context,
+    private val page: Page
+) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.8f
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        color = 0xFF6B778C.toInt()
+    }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0xFF6B778C.toInt()
+    }
+    private val rect = RectF()
+
+    fun setIconColor(color: Int) {
+        paint.color = color
+        fillPaint.color = color
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        when (page) {
+            Page.HOME -> drawHome(canvas, w, h)
+            Page.MODULES -> drawModules(canvas, w, h)
+            Page.PROFILES -> drawProfiles(canvas, w, h)
+            Page.TOOLS -> drawTools(canvas, w, h)
+        }
+    }
+
+    private fun drawHome(canvas: Canvas, w: Float, h: Float) {
+        val left = w * 0.22f
+        val right = w * 0.78f
+        val top = h * 0.42f
+        val bottom = h * 0.84f
+        canvas.drawLine(w * 0.16f, top, w * 0.5f, h * 0.14f, paint)
+        canvas.drawLine(w * 0.5f, h * 0.14f, w * 0.84f, top, paint)
+        rect.set(left, top, right, bottom)
+        canvas.drawRoundRect(rect, 3.5f, 3.5f, paint)
+    }
+
+    private fun drawModules(canvas: Canvas, w: Float, h: Float) {
+        val size = w * 0.24f
+        val gap = w * 0.13f
+        val startX = (w - size * 2f - gap) / 2f
+        val startY = h * 0.18f
+        repeat(2) { row ->
+            repeat(2) { col ->
+                val x = startX + col * (size + gap)
+                val y = startY + row * (size + gap * 0.72f)
+                rect.set(x, y, x + size, y + size)
+                canvas.drawRoundRect(rect, 4f, 4f, paint)
+            }
+        }
+    }
+
+    private fun drawProfiles(canvas: Canvas, w: Float, h: Float) {
+        val left = w * 0.20f
+        val right = w * 0.80f
+        val height = h * 0.18f
+        val top = h * 0.22f
+        repeat(3) { index ->
+            val y = top + index * h * 0.20f
+            val inset = index * w * 0.045f
+            rect.set(left + inset, y, right - inset, y + height)
+            canvas.drawRoundRect(rect, 5f, 5f, paint)
+        }
+    }
+
+    private fun drawTools(canvas: Canvas, w: Float, h: Float) {
+        val cx = w * 0.5f
+        val cy = h * 0.50f
+        canvas.drawCircle(cx, cy, w * 0.18f, paint)
+        canvas.drawCircle(cx, cy, w * 0.05f, fillPaint)
+        for (i in 0 until 8) {
+            val angle = Math.toRadians((i * 45).toDouble())
+            val inner = w * 0.25f
+            val outer = w * 0.34f
+            val x1 = cx + kotlin.math.cos(angle).toFloat() * inner
+            val y1 = cy + kotlin.math.sin(angle).toFloat() * inner
+            val x2 = cx + kotlin.math.cos(angle).toFloat() * outer
+            val y2 = cy + kotlin.math.sin(angle).toFloat() * outer
+            canvas.drawLine(x1, y1, x2, y2, paint)
+        }
+    }
 }
