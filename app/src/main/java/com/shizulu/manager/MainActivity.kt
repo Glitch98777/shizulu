@@ -18,6 +18,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -49,6 +50,7 @@ class MainActivity : Activity() {
     private lateinit var shizukuChip: TextView
     private lateinit var permissionChip: TextView
     private lateinit var serviceChip: TextView
+    private lateinit var backendChip: TextView
     private lateinit var grantButton: TextView
     private lateinit var dryRunButton: TextView
     private lateinit var moduleCount: TextView
@@ -64,6 +66,7 @@ class MainActivity : Activity() {
     private lateinit var toolsNav: LinearLayout
     private var service: IShizuluService? = null
     private var dryRunEnabled = false
+    private var executionMode = ExecutionMode.SHIZUKU
     private var currentPage = Page.HOME
 
     private val permissionListener =
@@ -101,6 +104,7 @@ class MainActivity : Activity() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
         dryRunEnabled = settingsPrefs.getBoolean(KEY_DRY_RUN, false)
+        executionMode = ExecutionMode.from(settingsPrefs.getString(KEY_EXECUTION_MODE, null))
         buildUi()
         renderStatus()
         renderDryRun()
@@ -338,10 +342,12 @@ class MainActivity : Activity() {
                 shizukuChip = chip("Shizuku")
                 permissionChip = chip("Permission")
                 serviceChip = chip("Service")
+                backendChip = chip("Backend")
 
                 addView(shizukuChip)
                 addView(permissionChip, rowGapParams())
                 addView(serviceChip, rowGapParams())
+                addView(backendChip, rowGapParams())
             })
         }
     }
@@ -365,7 +371,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Install JSON modules, grant Shizuku, then run actions from Profiles or Installed shizules."
+                text = "Install JSON modules, choose an execution backend, then run actions from Profiles or Installed shizules."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(dp(2), dp(12), dp(2), 0)
@@ -446,6 +452,8 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
 
+            addView(executionModePanel())
+            addView(wirelessAdbPanel(), spacedParams(top = 10))
             addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -454,6 +462,66 @@ class MainActivity : Activity() {
                     leftMargin = dp(10)
                 })
             }, spacedParams(top = 10))
+        }
+    }
+
+    private fun executionModePanel(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(10))
+
+            addView(TextView(context).apply {
+                text = "Execution backend"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            addView(TextView(context).apply {
+                text = "Shizuku is fully supported now. Wireless ADB is available as an experimental backend surface while the native pairing/protocol layer is being added."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("Use Shizuku", filled = executionMode == ExecutionMode.SHIZUKU) {
+                    setExecutionMode(ExecutionMode.SHIZUKU)
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("Use Wireless ADB", filled = executionMode == ExecutionMode.WIRELESS_ADB) {
+                    setExecutionMode(ExecutionMode.WIRELESS_ADB)
+                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+            })
+        }
+    }
+
+    private fun wirelessAdbPanel(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = "Wireless ADB"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+
+            addView(TextView(context).apply {
+                text = "Use Android 11+ Wireless debugging. Configure pairing/connect ports here; Shizulu will route modules through this backend once the native ADB protocol layer is bundled."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("Open Settings", filled = false) { openDeveloperSettings() }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("Configure", filled = true) { showWirelessAdbConfigDialog() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+                addView(compactButton("Test", filled = false) { testWirelessAdbBackend() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+            })
         }
     }
 
@@ -480,6 +548,7 @@ class MainActivity : Activity() {
             setChip(shizukuChip, if (binderAlive) "Shizuku running" else "Shizuku offline", binderAlive)
             setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
             setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
+            setChip(backendChip, executionMode.label, executionMode == ExecutionMode.SHIZUKU || wirelessAdbConfigured())
 
             grantButton.text = if (permissionGranted) "Bind service" else "Grant Shizuku"
         }
@@ -799,9 +868,83 @@ class MainActivity : Activity() {
         Shizuku.bindUserService(args, serviceConnection)
     }
 
+    private fun setExecutionMode(mode: ExecutionMode) {
+        executionMode = mode
+        settingsPrefs.edit().putString(KEY_EXECUTION_MODE, mode.name).apply()
+        appendLog("Execution backend set to ${mode.label}")
+        renderStatus()
+        if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
+    }
+
+    private fun wirelessAdbConfigured(): Boolean {
+        return settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0) > 0
+    }
+
+    private fun openDeveloperSettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+        }.onFailure {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
+    private fun showWirelessAdbConfigDialog() {
+        val currentPair = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0).takeIf { it > 0 }?.toString().orEmpty()
+        val currentConnect = settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0).takeIf { it > 0 }?.toString().orEmpty()
+        val pairInput = EditText(this).apply {
+            hint = "Pairing port"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(currentPair)
+        }
+        val connectInput = EditText(this).apply {
+            hint = "Connect port"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(currentConnect)
+        }
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(pairInput)
+            addView(connectInput)
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Wireless ADB setup")
+            .setMessage("Enter the ports shown in Developer options > Wireless debugging. Pairing code support will land with the native protocol layer.")
+            .setView(layout)
+            .setPositiveButton("Save") { _, _ ->
+                val pairPort = pairInput.text.toString().trim().toIntOrNull() ?: 0
+                val connectPort = connectInput.text.toString().trim().toIntOrNull() ?: 0
+                settingsPrefs.edit()
+                    .putInt(KEY_ADB_PAIR_PORT, pairPort)
+                    .putInt(KEY_ADB_CONNECT_PORT, connectPort)
+                    .apply()
+                appendLog("Wireless ADB config saved: pair=$pairPort connect=$connectPort")
+                renderStatus()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun testWirelessAdbBackend() {
+        val connectPort = settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0)
+        val message = if (connectPort > 0) {
+            "Wireless ADB config is saved for localhost:$connectPort.\n\nNative TLS pairing and shell execution are not bundled in this build yet, so modules still need Shizuku mode for real execution."
+        } else {
+            "Wireless ADB is not configured yet. Open Wireless debugging, pair the device, then save the connect port here."
+        }
+        appendLog("Wireless ADB test: ${if (connectPort > 0) "configured" else "not configured"}")
+        showOutput("Wireless ADB", message)
+    }
+
     private fun runAction(shizule: Shizule, action: ShizuleAction) {
         if (dryRunEnabled) {
             dryRunAction(shizule, action)
+            return
+        }
+
+        if (executionMode == ExecutionMode.WIRELESS_ADB) {
+            runWirelessAdbAction(shizule, action)
             return
         }
 
@@ -842,6 +985,24 @@ class MainActivity : Activity() {
                     mainHandler.post { showOutput(shizule.name, "Failed: ${it.message ?: it.javaClass.simpleName}\n\n$output") }
                 }
         }
+    }
+
+    private fun runWirelessAdbAction(shizule: Shizule, action: ShizuleAction) {
+        val connectPort = settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0)
+        val preview = buildString {
+            append("Wireless ADB backend selected.\n\n")
+            if (connectPort <= 0) {
+                append("No connect port is configured. Open Tools > Wireless ADB > Configure.\n\n")
+            } else {
+                append("Configured target: localhost:").append(connectPort).append("\n\n")
+            }
+            append("Native ADB TLS pairing/shell execution is not bundled in this build yet, so these commands were not executed:\n\n")
+            action.commands.forEachIndexed { index, command ->
+                append(index + 1).append(". ").append(command.exec).append('\n')
+            }
+        }
+        appendLog("Wireless ADB blocked ${shizule.name}/${action.label}: native protocol layer not bundled")
+        showOutput("${shizule.name} Wireless ADB", preview)
     }
 
     private fun dryRunAction(shizule: Shizule, action: ShizuleAction) {
@@ -1167,6 +1328,9 @@ class MainActivity : Activity() {
         private const val KEY_LOGS = "logs"
         private const val KEY_DRY_RUN = "dry_run"
         private const val KEY_CUSTOM_PROFILES = "custom_profiles"
+        private const val KEY_EXECUTION_MODE = "execution_mode"
+        private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
+        private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
 
         private val PROFILES = listOf(
@@ -1224,6 +1388,17 @@ enum class Page {
     MODULES,
     PROFILES,
     TOOLS
+}
+
+enum class ExecutionMode(val label: String) {
+    SHIZUKU("Shizuku"),
+    WIRELESS_ADB("Wireless ADB");
+
+    companion object {
+        fun from(value: String?): ExecutionMode {
+            return entries.firstOrNull { it.name == value } ?: SHIZUKU
+        }
+    }
 }
 
 class NavIconView(

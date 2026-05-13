@@ -12,6 +12,7 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 - Install and remove shizules from private app storage.
 - Request Shizuku permission and bind a Shizuku `UserService`.
 - Run shizule commands as the ADB/shell identity.
+- Choose between the fully working Shizuku backend and an experimental Wireless ADB backend surface.
 - Dry Run mode previews and logs commands without executing them.
 - Profiles run grouped module actions like `Comfort Setup`, `Clean Pixel`, and `Stock Restore`.
 - Create custom profiles from installed shizule actions.
@@ -91,6 +92,15 @@ Shizulu is powerful because Shizuku is powerful. A shizule can run shell command
 - Use `Restore` actions when provided.
 
 Shizulu does not provide root, kernel access, SELinux bypasses, boot image changes, or Magisk-style systemless mounts.
+
+## Execution Backends
+
+Shizulu currently has two backend modes:
+
+- `Shizuku`: fully supported. Shizulu binds a Shizuku `UserService` and runs shizule commands with Shizuku's ADB/shell identity.
+- `Wireless ADB`: experimental app-side support. The UI can store Wireless debugging setup details and route module execution to this backend, but native TLS pairing and shell execution are not bundled in this build yet.
+
+The Wireless ADB implementation is designed around Android 11+ Wireless debugging, mDNS service discovery, ADB key pairing, and ADB shell execution. Until that protocol layer lands, use Shizuku mode for real module execution.
 
 ## Build From Source
 
