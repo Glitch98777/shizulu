@@ -20,6 +20,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.Window
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -53,8 +54,14 @@ class MainActivity : Activity() {
     private lateinit var modeSummaryText: TextView
     private lateinit var profilesList: LinearLayout
     private lateinit var moduleList: LinearLayout
+    private lateinit var contentHost: FrameLayout
+    private lateinit var homeNav: TextView
+    private lateinit var modulesNav: TextView
+    private lateinit var profilesNav: TextView
+    private lateinit var toolsNav: TextView
     private var service: IShizuluService? = null
     private var dryRunEnabled = false
+    private var currentPage = Page.HOME
 
     private val permissionListener =
         Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -127,39 +134,114 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi() {
-        val rootScroll = ScrollView(this).apply {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(COLORS.background)
+        }
+
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(24))
+            addView(appHeader())
+        })
+
+        contentHost = FrameLayout(this)
+        root.addView(contentHost, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(bottomNav())
+
+        setContentView(root)
+        showPage(Page.HOME)
+    }
+
+    private fun showPage(page: Page) {
+        currentPage = page
+        contentHost.removeAllViews()
+        contentHost.addView(pageScroll(page), FrameLayout.LayoutParams(-1, -1))
+        renderNav()
+        renderStatus()
+        renderDryRun()
+        refreshModules()
+    }
+
+    private fun pageScroll(page: Page): View {
+        val scroll = ScrollView(this).apply {
             setBackgroundColor(COLORS.background)
             isFillViewport = true
         }
-        val root = LinearLayout(this).apply {
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(24))
+            setPadding(dp(20), dp(4), dp(20), dp(18))
         }
-        rootScroll.addView(root, LinearLayout.LayoutParams(-1, -2))
+        scroll.addView(content, LinearLayout.LayoutParams(-1, -2))
 
-        root.addView(appHeader())
-        root.addView(sectionTitle("Dashboard"), spacedParams(top = 22))
-        root.addView(statusPanel(), spacedParams(top = 10))
-        root.addView(summaryStrip(), spacedParams(top = 12))
-        root.addView(sectionTitle("Quick Actions"), spacedParams(top = 24))
-        root.addView(primaryActions(), spacedParams(top = 10))
-        root.addView(profilesHeader(), spacedParams(top = 26))
-
-        profilesList = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        when (page) {
+            Page.HOME -> {
+                content.addView(sectionTitle("Dashboard"), spacedParams(top = 8))
+                content.addView(statusPanel(), spacedParams(top = 10))
+                content.addView(summaryStrip(), spacedParams(top = 12))
+                content.addView(sectionTitle("Quick Actions"), spacedParams(top = 24))
+                content.addView(primaryActions(), spacedParams(top = 10))
+            }
+            Page.MODULES -> {
+                content.addView(sectionHeader(), spacedParams(top = 8))
+                moduleList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                content.addView(moduleList, spacedParams(top = 10))
+            }
+            Page.PROFILES -> {
+                content.addView(profilesHeader(), spacedParams(top = 8))
+                profilesList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                content.addView(profilesList, spacedParams(top = 10))
+            }
+            Page.TOOLS -> {
+                content.addView(sectionTitle("Tools"), spacedParams(top = 8))
+                content.addView(logsFooter(), spacedParams(top = 10))
+            }
         }
-        root.addView(profilesList, spacedParams(top = 10))
+        return scroll
+    }
 
-        root.addView(sectionHeader(), spacedParams(top = 26))
+    private fun bottomNav(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(10))
+            background = roundedRect(COLORS.surface, dp(0), COLORS.outline, 1)
 
-        moduleList = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            homeNav = navButton("Home") { showPage(Page.HOME) }
+            modulesNav = navButton("Modules") { showPage(Page.MODULES) }
+            profilesNav = navButton("Profiles") { showPage(Page.PROFILES) }
+            toolsNav = navButton("Tools") { showPage(Page.TOOLS) }
+
+            addView(homeNav, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(modulesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(profilesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(toolsNav, LinearLayout.LayoutParams(0, dp(48), 1f))
         }
-        root.addView(moduleList, spacedParams(top = 10))
-        root.addView(sectionTitle("Tools"), spacedParams(top = 26))
-        root.addView(logsFooter(), spacedParams(top = 18))
+    }
 
-        setContentView(rootScroll)
+    private fun navButton(label: String, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun renderNav() {
+        if (!::homeNav.isInitialized) return
+        setNavState(homeNav, currentPage == Page.HOME)
+        setNavState(modulesNav, currentPage == Page.MODULES)
+        setNavState(profilesNav, currentPage == Page.PROFILES)
+        setNavState(toolsNav, currentPage == Page.TOOLS)
+    }
+
+    private fun setNavState(view: TextView, selected: Boolean) {
+        view.setTextColor(if (selected) COLORS.primary else COLORS.muted)
+        view.background = if (selected) roundedRect(COLORS.primarySoft, dp(8)) else null
     }
 
     private fun appHeader(): View {
@@ -387,9 +469,10 @@ class MainActivity : Activity() {
     }
 
     private fun renderDryRun() {
-        if (!::dryRunButton.isInitialized) return
-        dryRunButton.text = if (dryRunEnabled) "Dry Run: On" else "Dry Run: Off"
-        dryRunButton.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.primary)
+        if (::dryRunButton.isInitialized) {
+            dryRunButton.text = if (dryRunEnabled) "Dry Run: On" else "Dry Run: Off"
+            dryRunButton.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.primary)
+        }
         if (::modeSummaryText.isInitialized) {
             modeSummaryText.text = "${if (dryRunEnabled) "Dry" else "Live"}\nMode"
             modeSummaryText.setTextColor(if (dryRunEnabled) COLORS.warning else COLORS.ink)
@@ -405,21 +488,25 @@ class MainActivity : Activity() {
     }
 
     private fun refreshModules() {
-        moduleList.removeAllViews()
         val shizules = store.list()
-        moduleCount.text = shizules.size.toString()
+        if (::moduleCount.isInitialized) {
+            moduleCount.text = shizules.size.toString()
+        }
         if (::moduleSummaryText.isInitialized) {
             moduleSummaryText.text = "${shizules.size}\nModules"
         }
-        refreshProfiles(shizules)
-
-        if (shizules.isEmpty()) {
-            moduleList.addView(emptyState())
-            return
+        if (::profilesList.isInitialized) {
+            refreshProfiles(shizules)
         }
-
-        shizules.forEachIndexed { index, shizule ->
-            moduleList.addView(moduleView(shizule), spacedParams(top = if (index == 0) 0 else 12))
+        if (::moduleList.isInitialized) {
+            moduleList.removeAllViews()
+            if (shizules.isEmpty()) {
+                moduleList.addView(emptyState())
+                return
+            }
+            shizules.forEachIndexed { index, shizule ->
+                moduleList.addView(moduleView(shizule), spacedParams(top = if (index == 0) 0 else 12))
+            }
         }
     }
 
@@ -1114,3 +1201,10 @@ data class ProfileChoice(
     val label: String,
     val step: ProfileStep
 )
+
+enum class Page {
+    HOME,
+    MODULES,
+    PROFILES,
+    TOOLS
+}
