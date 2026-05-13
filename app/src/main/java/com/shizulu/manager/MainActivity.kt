@@ -821,6 +821,7 @@ class MainActivity : Activity() {
         settingsPrefs.edit().putBoolean(KEY_DRY_RUN, dryRunEnabled).apply()
         appendLog("Dry run ${if (dryRunEnabled) "enabled" else "disabled"}")
         renderDryRun()
+        refreshModules()
         Toast.makeText(this, if (dryRunEnabled) "Dry run enabled" else "Dry run disabled", Toast.LENGTH_SHORT).show()
     }
 
@@ -901,7 +902,7 @@ class MainActivity : Activity() {
 
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    addView(compactButton("Run", filled = missing == 0) { runProfile(profile) })
+                    addView(compactButton(if (dryRunEnabled) "Preview" else "Run", filled = missing == 0) { runProfile(profile) })
                     addView(compactButton("Delete", filled = false) {
                         confirmDeleteProfile(profile)
                     }, rowGapParams())
@@ -1606,15 +1607,13 @@ class MainActivity : Activity() {
     }
 
     private fun dryRunAction(shizule: Shizule, action: ShizuleAction) {
-        val preview = buildString {
-            append("Dry run: no commands executed.\n\n")
-            action.commands.forEachIndexed { index, command ->
-                append(index + 1).append(". ").append(command.exec).append('\n')
-                appendLog("Dry run ${shizule.name}/${action.label} command ${index + 1}: ${command.exec}")
-            }
+        appendLog("Dry run started: ${shizule.name}/${action.label}")
+        val preview = buildDryRunPreview(listOf(shizule to action))
+        action.commands.forEachIndexed { index, command ->
+            appendLog("Dry run ${shizule.name}/${action.label} command ${index + 1}: ${command.exec}")
         }
         appendLog("Dry run finished: ${shizule.name}/${action.label}")
-        showOutput("${shizule.name} dry run", preview)
+        showOutput("${shizule.name} Dry Run", preview)
     }
 
     private fun runProfile(profile: ShizuluProfile) {
@@ -1628,11 +1627,64 @@ class MainActivity : Activity() {
             return
         }
 
+        if (dryRunEnabled) {
+            dryRunProfile(profile, shizules)
+            return
+        }
+
         appendLog("Started profile ${profile.name}")
-        profile.steps.forEach { step ->
-            val shizule = shizules.first { it.id == step.moduleId }
-            val action = shizule.actions.first { it.id == step.actionId }
+        resolveProfileSteps(profile, shizules).forEach { (shizule, action) ->
             runAction(shizule, action)
+        }
+    }
+
+    private fun dryRunProfile(profile: ShizuluProfile, shizules: List<Shizule>) {
+        val actions = resolveProfileSteps(profile, shizules)
+        appendLog("Dry run started profile ${profile.name} (${actions.size} action(s))")
+        actions.forEach { (shizule, action) ->
+            action.commands.forEachIndexed { index, command ->
+                appendLog("Dry run ${profile.name}/${shizule.name}/${action.label} command ${index + 1}: ${command.exec}")
+            }
+        }
+        appendLog("Dry run finished profile ${profile.name}")
+        showOutput("${profile.name} Dry Run", buildDryRunPreview(actions, profile.name))
+    }
+
+    private fun resolveProfileSteps(profile: ShizuluProfile, shizules: List<Shizule>): List<Pair<Shizule, ShizuleAction>> {
+        return profile.steps.map { step ->
+            val shizule = shizules.first { it.id == step.moduleId }
+            shizule to shizule.actions.first { it.id == step.actionId }
+        }
+    }
+
+    private fun buildDryRunPreview(actions: List<Pair<Shizule, ShizuleAction>>, profileName: String? = null): String {
+        val backend = if (executionMode == ExecutionMode.WIRELESS_ADB) "Wireless ADB" else "Shizuku"
+        val commandCount = actions.sumOf { it.second.commands.size }
+        return buildString {
+            append("Dry run: no commands executed.\n")
+            append("Backend: ").append(backend).append('\n')
+            append("Environment: SHIZULU=1, SHIZULU_API_VERSION=1, SHIZULU_MODULE_ID=<module id>\n")
+            if (profileName != null) append("Profile: ").append(profileName).append('\n')
+            append("Actions: ").append(actions.size).append('\n')
+            append("Commands: ").append(commandCount).append("\n\n")
+
+            if (actions.isEmpty()) {
+                append("No actions selected.")
+                return@buildString
+            }
+
+            actions.forEachIndexed { actionIndex, (shizule, action) ->
+                append(actionIndex + 1).append(". ").append(shizule.name).append(" / ").append(action.label).append('\n')
+                append("   Module: ").append(shizule.id).append('\n')
+                if (action.commands.isEmpty()) {
+                    append("   No commands in this action.\n")
+                } else {
+                    action.commands.forEachIndexed { commandIndex, command ->
+                        append("   ").append(commandIndex + 1).append(") ").append(command.exec).append('\n')
+                    }
+                }
+                if (actionIndex < actions.lastIndex) append('\n')
+            }
         }
     }
 
