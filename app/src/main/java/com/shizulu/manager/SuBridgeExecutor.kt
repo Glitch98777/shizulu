@@ -31,6 +31,7 @@ class SuBridgeExecutor(private val context: Context) {
             append(if (prefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)) "enabled" else "disabled")
             append('\n')
             append("Backend: ").append(mode.label).append('\n')
+            append("ADB elevation: use Max ADB Elevation in Tools to grant shell-accessible permissions and appops.\n")
             when (mode) {
                 ExecutionMode.WIRELESS_ADB -> {
                     append("Wireless ADB configured: ")

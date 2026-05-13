@@ -1238,15 +1238,16 @@ class MainActivity : Activity() {
         android.app.AlertDialog.Builder(this)
             .setTitle("SU Bridge")
             .setMessage("Shizulu now exposes a real opt-in bridge endpoint at content://$packageName.su for apps/modules that integrate with it. Normal APKs still cannot replace Android's system su path without root/system access.")
-            .setItems(arrayOf(if (enabled) "Disable bridge endpoint" else "Enable bridge endpoint", "Run su -c command", "Self-test", "Install bridge shizule", "Install /data/local/tmp bridge script", "Bridge status", "Bridge API sample")) { _, which ->
+            .setItems(arrayOf(if (enabled) "Disable bridge endpoint" else "Enable bridge endpoint", "Max ADB Elevation", "Run su -c command", "Self-test", "Install bridge shizule", "Install /data/local/tmp bridge script", "Bridge status", "Bridge API sample")) { _, which ->
                 when (which) {
                     0 -> setSuBridgeEndpointEnabled(!enabled)
-                    1 -> showSuBridgeCommandDialog()
-                    2 -> runSuBridgeSelfTest()
-                    3 -> installSuBridgeShizule()
-                    4 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    5 -> showSuBridgeStatus()
-                    6 -> showSuBridgeApiSample()
+                    1 -> runSuBridgeElevation()
+                    2 -> showSuBridgeCommandDialog()
+                    3 -> runSuBridgeSelfTest()
+                    4 -> installSuBridgeShizule()
+                    5 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    6 -> showSuBridgeStatus()
+                    7 -> showSuBridgeApiSample()
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -1258,6 +1259,12 @@ class MainActivity : Activity() {
         appendLog("SU Bridge endpoint ${if (enabled) "enabled" else "disabled"}")
         Toast.makeText(this, if (enabled) "SU Bridge endpoint enabled" else "SU Bridge endpoint disabled", Toast.LENGTH_SHORT).show()
         if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
+    }
+
+    private fun runSuBridgeElevation() {
+        settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, true).apply()
+        appendLog("SU Bridge max ADB elevation requested")
+        runPowerCommand("Max ADB Elevation", maxAdbElevationCommand(), "com.shizulu.su_bridge")
     }
 
     private fun showSuBridgeCommandDialog() {
@@ -1907,6 +1914,9 @@ class MainActivity : Activity() {
                 "Install Bridge Script" to listOf(
                     suBridgeInstallCommand()
                 ),
+                "Max ADB Elevation" to listOf(
+                    maxAdbElevationCommand()
+                ),
                 "Remove Bridge Script" to listOf(
                     "rm -f /data/local/tmp/shizulu-su; echo removed /data/local/tmp/shizulu-su"
                 )
@@ -1930,6 +1940,43 @@ class MainActivity : Activity() {
             "chmod 755 /data/local/tmp/shizulu-su",
             "echo installed /data/local/tmp/shizulu-su"
         ).joinToString("\n")
+    }
+
+    private fun maxAdbElevationCommand(): String {
+        val pkg = packageName.shellQuote()
+        return """
+            pkg=$pkg
+            echo "Shizulu max ADB elevation"
+            echo "package=${'$'}pkg"
+            echo "uid=$(id)"
+            echo
+            run() {
+              echo "$ ${'$'}*"
+              "$@" 2>&1
+              code=${'$'}?
+              echo "exit=${'$'}code"
+              echo
+            }
+            echo "Granting shell-grantable permissions..."
+            run pm grant "${'$'}pkg" android.permission.WRITE_SECURE_SETTINGS
+            run pm grant "${'$'}pkg" android.permission.READ_LOGS
+            run pm grant "${'$'}pkg" android.permission.DUMP
+            run pm grant "${'$'}pkg" android.permission.POST_NOTIFICATIONS
+            echo "Applying appops..."
+            run cmd appops set "${'$'}pkg" GET_USAGE_STATS allow
+            run cmd appops set "${'$'}pkg" PACKAGE_USAGE_STATS allow
+            run cmd appops set "${'$'}pkg" MANAGE_EXTERNAL_STORAGE allow
+            run cmd appops set "${'$'}pkg" RUN_ANY_IN_BACKGROUND allow
+            run cmd appops set "${'$'}pkg" RUN_IN_BACKGROUND allow
+            run cmd appops set "${'$'}pkg" REQUEST_INSTALL_PACKAGES allow
+            echo "Applying background persistence allowances..."
+            run dumpsys deviceidle whitelist +"${'$'}pkg"
+            run cmd deviceidle whitelist +"${'$'}pkg"
+            echo "Verifying package state..."
+            run cmd appops get "${'$'}pkg"
+            run dumpsys package "${'$'}pkg"
+            echo "Elevation attempt complete. Commands that show non-zero exit were blocked by this Android build, but every shell-accessible elevation was attempted."
+        """.trimIndent()
     }
 
     private fun blankShizuleTemplate(): String {
