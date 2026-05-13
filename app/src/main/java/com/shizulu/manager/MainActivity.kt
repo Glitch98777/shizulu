@@ -510,7 +510,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Use Android 11+ Wireless debugging. Configure pairing/connect ports here; Shizulu will route modules through this backend once the native ADB protocol layer is bundled."
+                text = "Use Android 11+ Wireless debugging. Save the pairing code and port here; Shizulu will route modules through this backend once the native ADB protocol layer is bundled."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -877,49 +877,56 @@ class MainActivity : Activity() {
     }
 
     private fun wirelessAdbConfigured(): Boolean {
-        return settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0) > 0
+        return settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty().isNotBlank() &&
+            settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0) > 0
     }
 
     private fun openDeveloperSettings() {
+        val devSettings = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val settings = Intent(Settings.ACTION_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         runCatching {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+            startActivity(devSettings)
         }.onFailure {
-            startActivity(Intent(Settings.ACTION_SETTINGS))
+            startActivity(settings)
         }
     }
 
     private fun showWirelessAdbConfigDialog() {
-        val currentPair = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0).takeIf { it > 0 }?.toString().orEmpty()
-        val currentConnect = settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0).takeIf { it > 0 }?.toString().orEmpty()
-        val pairInput = EditText(this).apply {
-            hint = "Pairing port"
+        val currentCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
+        val currentPort = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0).takeIf { it > 0 }?.toString().orEmpty()
+        val codeInput = EditText(this).apply {
+            hint = "Pairing code"
             inputType = InputType.TYPE_CLASS_NUMBER
-            setText(currentPair)
+            setText(currentCode)
         }
-        val connectInput = EditText(this).apply {
-            hint = "Connect port"
+        val portInput = EditText(this).apply {
+            hint = "Port"
             inputType = InputType.TYPE_CLASS_NUMBER
-            setText(currentConnect)
+            setText(currentPort)
         }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), 0)
-            addView(pairInput)
-            addView(connectInput)
+            addView(codeInput)
+            addView(portInput)
         }
 
         android.app.AlertDialog.Builder(this)
             .setTitle("Wireless ADB setup")
-            .setMessage("Enter the ports shown in Developer options > Wireless debugging. Pairing code support will land with the native protocol layer.")
+            .setMessage("Enter the pairing code and port shown by Android's Wireless debugging pairing dialog.")
             .setView(layout)
             .setPositiveButton("Save") { _, _ ->
-                val pairPort = pairInput.text.toString().trim().toIntOrNull() ?: 0
-                val connectPort = connectInput.text.toString().trim().toIntOrNull() ?: 0
+                val pairingCode = codeInput.text.toString().trim()
+                val port = portInput.text.toString().trim().toIntOrNull() ?: 0
                 settingsPrefs.edit()
-                    .putInt(KEY_ADB_PAIR_PORT, pairPort)
-                    .putInt(KEY_ADB_CONNECT_PORT, connectPort)
+                    .putString(KEY_ADB_PAIRING_CODE, pairingCode)
+                    .putInt(KEY_ADB_PAIR_PORT, port)
                     .apply()
-                appendLog("Wireless ADB config saved: pair=$pairPort connect=$connectPort")
+                appendLog("Wireless ADB config saved: code=${pairingCode.maskPairingCode()} port=$port")
                 renderStatus()
             }
             .setNegativeButton("Cancel", null)
@@ -927,13 +934,14 @@ class MainActivity : Activity() {
     }
 
     private fun testWirelessAdbBackend() {
-        val connectPort = settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0)
-        val message = if (connectPort > 0) {
-            "Wireless ADB config is saved for localhost:$connectPort.\n\nNative TLS pairing and shell execution are not bundled in this build yet, so modules still need Shizuku mode for real execution."
+        val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
+        val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
+        val message = if (pairingCode.isNotBlank() && port > 0) {
+            "Wireless ADB config is saved with pairing code ${pairingCode.maskPairingCode()} and port $port.\n\nNative TLS pairing and shell execution are not bundled in this build yet, so modules still need Shizuku mode for real execution."
         } else {
-            "Wireless ADB is not configured yet. Open Wireless debugging, pair the device, then save the connect port here."
+            "Wireless ADB is not configured yet. Open Wireless debugging, choose Pair device with pairing code, then save the code and port here."
         }
-        appendLog("Wireless ADB test: ${if (connectPort > 0) "configured" else "not configured"}")
+        appendLog("Wireless ADB test: ${if (pairingCode.isNotBlank() && port > 0) "configured" else "not configured"}")
         showOutput("Wireless ADB", message)
     }
 
@@ -988,13 +996,15 @@ class MainActivity : Activity() {
     }
 
     private fun runWirelessAdbAction(shizule: Shizule, action: ShizuleAction) {
-        val connectPort = settingsPrefs.getInt(KEY_ADB_CONNECT_PORT, 0)
+        val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
+        val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
         val preview = buildString {
             append("Wireless ADB backend selected.\n\n")
-            if (connectPort <= 0) {
-                append("No connect port is configured. Open Tools > Wireless ADB > Configure.\n\n")
+            if (pairingCode.isBlank() || port <= 0) {
+                append("No pairing code and port are configured. Open Tools > Wireless ADB > Configure.\n\n")
             } else {
-                append("Configured target: localhost:").append(connectPort).append("\n\n")
+                append("Configured pairing: code ").append(pairingCode.maskPairingCode())
+                    .append(" on port ").append(port).append("\n\n")
             }
             append("Native ADB TLS pairing/shell execution is not bundled in this build yet, so these commands were not executed:\n\n")
             action.commands.forEachIndexed { index, command ->
@@ -1003,6 +1013,13 @@ class MainActivity : Activity() {
         }
         appendLog("Wireless ADB blocked ${shizule.name}/${action.label}: native protocol layer not bundled")
         showOutput("${shizule.name} Wireless ADB", preview)
+    }
+
+    private fun String.maskPairingCode(): String {
+        return when {
+            length <= 2 -> "**"
+            else -> "*".repeat(length - 2) + takeLast(2)
+        }
     }
 
     private fun dryRunAction(shizule: Shizule, action: ShizuleAction) {
@@ -1329,8 +1346,8 @@ class MainActivity : Activity() {
         private const val KEY_DRY_RUN = "dry_run"
         private const val KEY_CUSTOM_PROFILES = "custom_profiles"
         private const val KEY_EXECUTION_MODE = "execution_mode"
+        private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
-        private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
 
         private val PROFILES = listOf(

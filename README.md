@@ -98,7 +98,7 @@ Shizulu does not provide root, kernel access, SELinux bypasses, boot image chang
 Shizulu currently has two backend modes:
 
 - `Shizuku`: fully supported. Shizulu binds a Shizuku `UserService` and runs shizule commands with Shizuku's ADB/shell identity.
-- `Wireless ADB`: experimental app-side support. The UI can store Wireless debugging setup details and route module execution to this backend, but native TLS pairing and shell execution are not bundled in this build yet.
+- `Wireless ADB`: experimental app-side support. The UI stores the Wireless debugging pairing code and port, then routes module execution to this backend, but native TLS pairing and shell execution are not bundled in this build yet.
 
 The Wireless ADB implementation is designed around Android 11+ Wireless debugging, mDNS service discovery, ADB key pairing, and ADB shell execution. Until that protocol layer lands, use Shizuku mode for real module execution.
 
