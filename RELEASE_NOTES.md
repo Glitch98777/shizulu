@@ -13,6 +13,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
 - Theme contrast tuning so light mode keeps dark text on pale accents and dark mode keeps white text on dark accents.
+- Tools footer buttons now keep readable black text in light mode and white text in dark mode.
 - Dry Run mode to preview/log commands without modifying the device.
 - Profiles for grouped module actions:
   - Comfort Setup
@@ -20,7 +21,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
   - Stock Restore
 - Custom profile creation from installed shizule actions.
 - JSON backup export and restore for shizules, custom profiles, dry-run state, and logs.
-- App updater in Tools for checking GitHub releases and installing newer APK builds.
+- App updater in Tools for checking GitHub releases and installing newer APK builds without allowing stale release downgrades.
 - Persistent Logs screen for command exits, failures, imports, dry runs, and canceled actions.
 - Polished manager-style UI and custom Shizulu app icon.
 

@@ -479,11 +479,11 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
 
-            addView(secondaryButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
+            addView(toolsFooterButton("Logs") { showLogs() }, LinearLayout.LayoutParams(-1, dp(48)))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(secondaryButton("Backup") { openBackupCreator() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-                addView(secondaryButton("Restore Backup") { openBackupPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                addView(toolsFooterButton("Backup") { openBackupCreator() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+                addView(toolsFooterButton("Restore Backup") { openBackupPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     leftMargin = dp(10)
                 })
             }, spacedParams(top = 10))
@@ -616,7 +616,7 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 addView(compactButton("Check", filled = false) { checkForUpdates() }, LinearLayout.LayoutParams(0, dp(42), 1f))
                 updaterButton = compactButton("Update", filled = true) { installLatestUpdate() }.apply {
-                    val enabled = savedRelease?.isNewerThanCurrent() == true
+                    val enabled = savedRelease?.isReadyForCurrentBuild() == true
                     isEnabled = enabled
                     alpha = if (enabled) 1f else 0.45f
                 }
@@ -1490,11 +1490,17 @@ class MainActivity : Activity() {
         appendLog("Update check started")
 
         executor.execute {
-            runCatching { fetchLatestRelease() }
+            runCatching {
+                val release = fetchLatestRelease()
+                release.copy(
+                    checkedAgainst = BuildConfig.GIT_SHA,
+                    updateAvailable = releaseIsAheadOfCurrent(release)
+                )
+            }
                 .onSuccess { release ->
                     latestRelease = release
-                    val updateAvailable = release.isNewerThanCurrent()
-                    appendLog("Update check ${if (updateAvailable) "found ${release.tag}" else "current"}")
+                    val updateAvailable = release.isReadyForCurrentBuild()
+                    appendLog("Update check ${if (updateAvailable) "found newer ${release.tag}" else "blocked stale/current ${release.tag}"}")
                     mainHandler.post {
                         if (updateAvailable) {
                             val status = "Update available: ${release.tag}\nCurrent: ${BuildConfig.GIT_SHA}\nLatest: ${release.commitSha ?: "unknown commit"}"
@@ -1502,7 +1508,7 @@ class MainActivity : Activity() {
                             saveUpdaterState(status, release)
                             setUpdaterButton(true)
                         } else {
-                            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+                            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})\nLatest release is not ahead of this app."
                             updaterStatusText.text = status
                             saveUpdaterState(status, null)
                             setUpdaterButton(false)
@@ -1524,7 +1530,11 @@ class MainActivity : Activity() {
 
     private fun installLatestUpdate() {
         val release = latestRelease ?: savedLatestRelease()
-        if (release == null || !release.isNewerThanCurrent()) {
+        if (release == null || !release.isReadyForCurrentBuild()) {
+            val status = "Run Check before updating. Shizulu blocks stale release installs so it cannot downgrade your UI."
+            if (::updaterStatusText.isInitialized) updaterStatusText.text = status
+            saveUpdaterState(status, null)
+            setUpdaterButton(false)
             Toast.makeText(this, "Check for updates first.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1591,6 +1601,17 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun releaseIsAheadOfCurrent(release: GithubRelease): Boolean {
+        val latest = release.commitSha?.takeIf { it.isNotBlank() } ?: return false
+        val current = BuildConfig.GIT_SHA.takeIf { it.isNotBlank() && it != "unknown" } ?: return false
+        if (latest.startsWith(current, ignoreCase = true) || current.startsWith(latest, ignoreCase = true)) {
+            return false
+        }
+        val compareUrl = String.format(Locale.US, GITHUB_COMPARE_URL, current, latest)
+        val status = JSONObject(httpGet(compareUrl)).optString("status")
+        return status.equals("behind", ignoreCase = true)
+    }
+
     private fun httpGet(url: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
@@ -1655,7 +1676,7 @@ class MainActivity : Activity() {
     }
 
     private fun visibleUpdaterStatus(release: GithubRelease?): String {
-        if (release != null && !release.isNewerThanCurrent()) {
+        if (release != null && !release.isReadyForCurrentBuild()) {
             val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
             saveUpdaterState(status, null)
             return status
@@ -1681,10 +1702,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun GithubRelease.isNewerThanCurrent(): Boolean {
-        val latest = commitSha ?: return tag != BuildConfig.VERSION_NAME
-        val current = BuildConfig.GIT_SHA
-        return !latest.startsWith(current, ignoreCase = true) && !current.startsWith(latest, ignoreCase = true)
+    private fun GithubRelease.isReadyForCurrentBuild(): Boolean {
+        return updateAvailable && checkedAgainst.equals(BuildConfig.GIT_SHA, ignoreCase = true)
     }
 
     private fun showOutput(title: String, output: String) {
@@ -1731,6 +1750,10 @@ class MainActivity : Activity() {
 
     private fun secondaryButton(label: String, onClick: () -> Unit): TextView {
         return textButton(label, COLORS.surface, COLORS.primary, COLORS.primary, onClick)
+    }
+
+    private fun toolsFooterButton(label: String, onClick: () -> Unit): TextView {
+        return textButton(label, COLORS.surface, COLORS.ink, COLORS.outlineStrong, onClick)
     }
 
     private fun compactButton(label: String, filled: Boolean, onClick: () -> Unit): TextView {
@@ -1849,6 +1872,7 @@ class MainActivity : Activity() {
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val MAX_LOG_LINES = 160
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
+        private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
 
         private val PROFILES = listOf(
             ShizuluProfile(
@@ -1905,7 +1929,9 @@ data class GithubRelease(
     val name: String,
     val commitSha: String?,
     val apkName: String,
-    val apkUrl: String
+    val apkUrl: String,
+    val checkedAgainst: String? = null,
+    val updateAvailable: Boolean = false
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -1914,6 +1940,8 @@ data class GithubRelease(
             put("commitSha", commitSha ?: "")
             put("apkName", apkName)
             put("apkUrl", apkUrl)
+            put("checkedAgainst", checkedAgainst ?: "")
+            put("updateAvailable", updateAvailable)
         }
     }
 
@@ -1924,7 +1952,9 @@ data class GithubRelease(
                 name = obj.optString("name"),
                 commitSha = obj.optString("commitSha").takeIf { it.isNotBlank() },
                 apkName = obj.optString("apkName"),
-                apkUrl = obj.optString("apkUrl")
+                apkUrl = obj.optString("apkUrl"),
+                checkedAgainst = obj.optString("checkedAgainst").takeIf { it.isNotBlank() },
+                updateAvailable = obj.optBoolean("updateAvailable", false)
             )
         }
     }

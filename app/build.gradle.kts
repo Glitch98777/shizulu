@@ -10,13 +10,17 @@ android {
     val gitSha = providers.exec {
         commandLine("git", "rev-parse", "--short=12", "HEAD")
     }.standardOutput.asText.map { it.trim() }.orElse("unknown")
+    val gitCommitCount = providers.exec {
+        commandLine("git", "rev-list", "--count", "HEAD")
+    }.standardOutput.asText.map { it.trim().toInt() }.orElse(1)
 
     defaultConfig {
         applicationId = "com.shizulu.manager"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        val buildNumber = gitCommitCount.get()
+        versionCode = buildNumber
+        versionName = "0.1.$buildNumber"
         buildConfigField("String", "GIT_SHA", "\"${gitSha.get()}\"")
     }
 
