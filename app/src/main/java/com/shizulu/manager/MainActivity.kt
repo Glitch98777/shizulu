@@ -1241,6 +1241,7 @@ class MainActivity : Activity() {
             "Run su -c command",
             "Self-test",
             "ColorBlendr compatibility",
+            "Install shell interceptors",
             "Install bridge shizule",
             "Install /data/local/tmp bridge script",
             "Bridge status",
@@ -1256,10 +1257,11 @@ class MainActivity : Activity() {
                     2 -> showSuBridgeCommandDialog()
                     3 -> runSuBridgeSelfTest()
                     4 -> showColorBlendrCompatibility()
-                    5 -> installSuBridgeShizule()
-                    6 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    7 -> showSuBridgeStatus()
-                    8 -> showSuBridgeApiSample()
+                    5 -> runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
+                    6 -> installSuBridgeShizule()
+                    7 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    8 -> showSuBridgeStatus()
+                    9 -> showSuBridgeApiSample()
                 }
             }
             .setNegativeButton("OK", null)
@@ -1380,6 +1382,7 @@ class MainActivity : Activity() {
                         What Shizulu can do:
                         - Run the same ADB/shell-level commands through Shizulu.
                         - Install /data/local/tmp/su for apps that support a custom su path.
+                        - Install /data/local/tmp/shizulu-bin wrappers for apps/tools that can run through a custom shell PATH.
                         - Configure ColorBlendr's exported preferences into Shizuku/rootless mode so it uses the non-root path instead of asking libsu.
                         """.trimIndent()
                     )
@@ -2042,6 +2045,103 @@ class MainActivity : Activity() {
             "echo installed /data/local/tmp/su",
             "echo compatible apps can use /data/local/tmp/su as their custom su path"
         ).joinToString("\n")
+    }
+
+    private fun shellInterceptorInstallCommand(): String {
+        return """
+            dir=/data/local/tmp/shizulu-bin
+            uri='content://com.shizulu.manager.su'
+            mkdir -p "${'$'}dir"
+            cat > "${'$'}dir/su" <<'EOF'
+            #!/system/bin/sh
+            uri='content://com.shizulu.manager.su'
+            version='Shizulu SU Bridge shim 1.3'
+            command=''
+            while [ "${'$'}#" -gt 0 ]; do
+              case "${'$'}1" in
+                -v|--version)
+                  echo "${'$'}version"
+                  exit 0
+                  ;;
+                -V)
+                  echo 1
+                  exit 0
+                  ;;
+                -h|--help)
+                  echo 'usage: su [options] [-c command]'
+                  exit 0
+                  ;;
+                -c|--command)
+                  shift
+                  command="${'$'}*"
+                  break
+                  ;;
+                -c*)
+                  command="${'$'}{1#-c}"
+                  shift
+                  if [ "${'$'}#" -gt 0 ]; then command="${'$'}command ${'$'}*"; fi
+                  break
+                  ;;
+                -s|--shell|-Z|--context)
+                  shift
+                  if [ "${'$'}#" -gt 0 ]; then shift; fi
+                  ;;
+                -p|-l|-m|-mm|-M|--mount-master|--preserve-environment)
+                  shift
+                  ;;
+                0|root|shell)
+                  shift
+                  ;;
+                *)
+                  command="${'$'}*"
+                  break
+                  ;;
+              esac
+            done
+            if [ -z "${'$'}command" ] && [ ! -t 0 ]; then
+              command="${'$'}(/system/bin/cat)"
+            fi
+            if [ -z "${'$'}command" ]; then
+              echo 'Shizulu SU Bridge: interactive shells cannot be proxied without root.'
+              exit 1
+            fi
+            result="${'$'}(/system/bin/cmd content call --uri "${'$'}uri" --method su --arg "su -c ${'$'}command" 2>&1)"
+            echo "${'$'}result"
+            echo "${'$'}result" | /system/bin/grep -q 'success=false' && exit 1
+            exit 0
+            EOF
+            make_wrapper() {
+              tool="${'$'}1"
+              cat > "${'$'}dir/${'$'}tool" <<EOF
+            #!/system/bin/sh
+            uri='content://com.shizulu.manager.su'
+            command='${'$'}tool '"\${'$'}*"
+            result="\$(/system/bin/cmd content call --uri "\${'$'}uri" --method exec --arg "\${'$'}command" 2>&1)"
+            echo "\${'$'}result"
+            echo "\${'$'}result" | /system/bin/grep -q 'success=false' && exit 1
+            exit 0
+            EOF
+            }
+            make_wrapper pm
+            make_wrapper am
+            make_wrapper settings
+            make_wrapper cmd
+            make_wrapper appops
+            cat > "${'$'}dir/shizulu-shell" <<'EOF'
+            #!/system/bin/sh
+            export PATH="/data/local/tmp/shizulu-bin:${'$'}PATH"
+            exec /system/bin/sh "${'$'}@"
+            EOF
+            chmod 755 "${'$'}dir" "${'$'}dir/"*
+            cp "${'$'}dir/su" /data/local/tmp/su
+            chmod 755 /data/local/tmp/su
+            echo "Installed Shizulu shell interceptors:"
+            ls -l "${'$'}dir"
+            echo
+            echo "Use /data/local/tmp/shizulu-bin/su as a custom su path."
+            echo "Use /data/local/tmp/shizulu-bin/shizulu-shell as a custom shell, or prepend ${'$'}dir to PATH."
+            echo "This cannot replace hardcoded /system/bin/su or force another app's private PATH without root."
+        """.trimIndent()
     }
 
     private fun colorBlendrCompatibilityCommand(): String {
