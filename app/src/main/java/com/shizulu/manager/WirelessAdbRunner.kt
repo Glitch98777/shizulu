@@ -57,6 +57,7 @@ class WirelessAdbRunner(private val context: Context) {
         val action = ShizuleAction(
             id = "direct",
             label = "Direct command",
+            variables = emptyList(),
             commands = listOf(ShizuleCommand(command))
         )
         return run(moduleId, action, pairingCode, pairingPort)

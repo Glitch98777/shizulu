@@ -10,6 +10,7 @@ data class Shizule(
     val version: String,
     val description: String,
     val signature: ShizuleSignature?,
+    val variables: List<ShizuleVariable>,
     val actions: List<ShizuleAction>
 ) {
     val isSigned: Boolean
@@ -17,6 +18,7 @@ data class Shizule(
 
     companion object {
         private val idPattern = Regex("^[a-zA-Z0-9_.-]{3,80}$")
+        private val variableNamePattern = Regex("^[A-Za-z][A-Za-z0-9_]{0,39}$")
 
         fun fromJson(raw: String): Shizule {
             val obj = JSONObject(raw)
@@ -36,6 +38,7 @@ data class Shizule(
                 version = obj.optString("version", "1.0.0").take(32),
                 description = obj.optString("description", "").take(240),
                 signature = parseSignature(obj.optJSONObject("signature")),
+                variables = parseVariables(obj.optJSONArray("variables")),
                 actions = actions
             )
         }
@@ -57,6 +60,7 @@ data class Shizule(
                         ShizuleAction(
                             id = obj.optString("id", "action_$index").take(64),
                             label = obj.optString("label", "Run").take(64),
+                            variables = parseVariables(obj.optJSONArray("variables")),
                             commands = buildList {
                                 for (commandIndex in 0 until commands.length()) {
                                     val commandObj = commands.getJSONObject(commandIndex)
@@ -70,18 +74,63 @@ data class Shizule(
                 }
             }
         }
+
+        private fun parseVariables(array: JSONArray?): List<ShizuleVariable> {
+            if (array == null) return emptyList()
+            return buildList {
+                for (index in 0 until array.length()) {
+                    val obj = array.getJSONObject(index)
+                    val name = obj.getString("name").trim()
+                    require(variableNamePattern.matches(name)) { "Invalid variable name: $name" }
+                    add(
+                        ShizuleVariable(
+                            name = name,
+                            label = obj.optString("label", name).trim().take(80).ifBlank { name },
+                            type = ShizuleVariableType.from(obj.optString("type", "text")),
+                            defaultValue = obj.optString("default", "").take(240),
+                            required = obj.optBoolean("required", true)
+                        )
+                    )
+                }
+            }
+        }
     }
 }
 
 data class ShizuleAction(
     val id: String,
     val label: String,
+    val variables: List<ShizuleVariable>,
     val commands: List<ShizuleCommand>
 )
 
 data class ShizuleCommand(
     val exec: String
 )
+
+data class ShizuleVariable(
+    val name: String,
+    val label: String,
+    val type: ShizuleVariableType,
+    val defaultValue: String,
+    val required: Boolean
+)
+
+enum class ShizuleVariableType {
+    TEXT,
+    PACKAGE,
+    NUMBER;
+
+    companion object {
+        fun from(value: String): ShizuleVariableType {
+            return when (value.trim().lowercase()) {
+                "package", "packagename", "package_name", "pkg" -> PACKAGE
+                "number", "int", "integer" -> NUMBER
+                else -> TEXT
+            }
+        }
+    }
+}
 
 data class ShizuleSignature(
     val author: String,

@@ -1654,13 +1654,24 @@ class MainActivity : Activity() {
     }
 
     private fun runAction(shizule: Shizule, action: ShizuleAction) {
+        val variables = variablesForAction(shizule, action)
+        if (variables.isNotEmpty()) {
+            showActionVariableDialog(shizule, action, variables) { values ->
+                runResolvedAction(shizule, action, applyVariables(action, values))
+            }
+            return
+        }
+        runResolvedAction(shizule, action, action.commands)
+    }
+
+    private fun runResolvedAction(shizule: Shizule, action: ShizuleAction, commands: List<ShizuleCommand>) {
         if (dryRunEnabled) {
-            dryRunAction(shizule, action)
+            dryRunAction(shizule, action, commands)
             return
         }
 
         if (executionMode == ExecutionMode.WIRELESS_ADB) {
-            runWirelessAdbAction(shizule, action)
+            runWirelessAdbAction(shizule, action, commands)
             return
         }
 
@@ -1679,16 +1690,16 @@ class MainActivity : Activity() {
         executor.execute {
             val output = StringBuilder()
             var failed = false
-            appendLog("Started ${shizule.name}/${action.label} (${action.commands.size} command(s))")
+            appendLog("Started ${shizule.name}/${action.label} (${commands.size} command(s))")
             runCatching {
-                action.commands.forEachIndexed { index, command ->
+                commands.forEachIndexed { index, command ->
                     output.append("$ ").append(command.exec).append('\n')
                     val result = currentService.runShizuleCommand(shizule.id, command.exec)
                     if (!result.startsWith("exit=0")) failed = true
                     output.append(result).append("\n\n")
                     appendLog("${shizule.name}/${action.label} command ${index + 1}: ${result.lineSequence().firstOrNull() ?: "no exit"}")
                     mainHandler.post {
-                        Toast.makeText(this, "Ran ${index + 1}/${action.commands.size} for ${shizule.name}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Ran ${index + 1}/${commands.size} for ${shizule.name}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -1703,7 +1714,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun runWirelessAdbAction(shizule: Shizule, action: ShizuleAction) {
+    private fun runWirelessAdbAction(shizule: Shizule, action: ShizuleAction, commands: List<ShizuleCommand>) {
         val pairingCode = settingsPrefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
         val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
         if (pairingCode.isBlank() || port <= 0) {
@@ -1715,16 +1726,17 @@ class MainActivity : Activity() {
             return
         }
 
-        appendLog("Wireless ADB started ${shizule.name}/${action.label} (${action.commands.size} command(s))")
+        val resolvedAction = action.copy(commands = commands)
+        appendLog("Wireless ADB started ${shizule.name}/${action.label} (${commands.size} command(s))")
         executor.execute {
             runCatching {
-                WirelessAdbRunner(applicationContext).run(shizule.id, action, pairingCode, port)
+                WirelessAdbRunner(applicationContext).run(shizule.id, resolvedAction, pairingCode, port)
             }
                 .onSuccess { result ->
                     val failed = result.output.lineSequence().any { it.startsWith("exit=") && it != "exit=0" }
                     appendLog("${if (failed) "Wireless ADB finished with failures" else "Wireless ADB finished successfully"}: ${shizule.name}/${action.label}")
                     mainHandler.post {
-                        Toast.makeText(this, "Wireless ADB ran ${action.commands.size} command(s)", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Wireless ADB ran ${commands.size} command(s)", Toast.LENGTH_SHORT).show()
                         showOutput("${shizule.name} Wireless ADB", result.output)
                     }
                 }
@@ -1733,6 +1745,127 @@ class MainActivity : Activity() {
                     appendLog("Wireless ADB failed ${shizule.name}/${action.label}: $message")
                     mainHandler.post { showOutput("${shizule.name} Wireless ADB", "Failed: $message") }
                 }
+        }
+    }
+
+    private fun variablesForAction(shizule: Shizule, action: ShizuleAction): List<ShizuleVariable> {
+        val variables = linkedMapOf<String, ShizuleVariable>()
+        (shizule.variables + action.variables).forEach { variable ->
+            variables[variable.name] = variable
+        }
+        action.commands
+            .flatMap { command -> VARIABLE_PATTERN.findAll(command.exec).map { it.groupValues[1] } }
+            .distinct()
+            .forEach { name ->
+                variables.putIfAbsent(
+                    name,
+                    ShizuleVariable(
+                        name = name,
+                        label = name.replace('_', ' ').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() },
+                        type = if (name.contains("package", ignoreCase = true) || name.equals("pkg", ignoreCase = true)) {
+                            ShizuleVariableType.PACKAGE
+                        } else {
+                            ShizuleVariableType.TEXT
+                        },
+                        defaultValue = "",
+                        required = true
+                    )
+                )
+            }
+        return variables.values.toList()
+    }
+
+    private fun showActionVariableDialog(
+        shizule: Shizule,
+        action: ShizuleAction,
+        variables: List<ShizuleVariable>,
+        onReady: (Map<String, String>) -> Unit
+    ) {
+        val inputs = linkedMapOf<ShizuleVariable, EditText>()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(TextView(context).apply {
+                text = "Set values for ${shizule.name} / ${action.label}."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, 0, 0, dp(10))
+            })
+            variables.forEach { variable ->
+                addView(TextView(context).apply {
+                    text = variable.label
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    setPadding(0, dp(8), 0, dp(4))
+                })
+                val input = EditText(context).apply {
+                    setText(variable.defaultValue)
+                    hint = when (variable.type) {
+                        ShizuleVariableType.PACKAGE -> "com.example.app"
+                        ShizuleVariableType.NUMBER -> "0"
+                        ShizuleVariableType.TEXT -> variable.name
+                    }
+                    textSize = 14f
+                    setSingleLine(true)
+                    setTextColor(COLORS.ink)
+                    setHintTextColor(COLORS.muted)
+                    inputType = when (variable.type) {
+                        ShizuleVariableType.NUMBER -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                        else -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                    }
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+                }
+                inputs[variable] = input
+                addView(input)
+            }
+        }
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Action Variables")
+            .setView(content)
+            .setPositiveButton("Run", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val values = linkedMapOf<String, String>()
+                for ((variable, input) in inputs) {
+                    val value = input.text.toString().trim()
+                    val error = validateVariableValue(variable, value)
+                    if (error != null) {
+                        input.error = error
+                        return@setOnClickListener
+                    }
+                    values[variable.name] = value
+                }
+                appendLog("Resolved variables for ${shizule.name}/${action.label}: ${values.keys.joinToString(", ")}")
+                dialog.dismiss()
+                onReady(values)
+            }
+        }
+        dialog.show()
+    }
+
+    private fun validateVariableValue(variable: ShizuleVariable, value: String): String? {
+        if (variable.required && value.isBlank()) return "${variable.label} is required."
+        if (value.isBlank()) return null
+        if (value.length > MAX_VARIABLE_VALUE_LENGTH) return "Value is too long."
+        return when (variable.type) {
+            ShizuleVariableType.PACKAGE -> if (value.matches(PACKAGE_NAME_PATTERN)) null else "Enter a valid package name."
+            ShizuleVariableType.NUMBER -> if (value.matches(NUMBER_VALUE_PATTERN)) null else "Enter a number."
+            ShizuleVariableType.TEXT -> null
+        }
+    }
+
+    private fun applyVariables(action: ShizuleAction, values: Map<String, String>): List<ShizuleCommand> {
+        return action.commands.map { command ->
+            ShizuleCommand(
+                exec = VARIABLE_PATTERN.replace(command.exec) { match ->
+                    values[match.groupValues[1]].orEmpty()
+                }
+            )
         }
     }
 
@@ -1832,20 +1965,39 @@ class MainActivity : Activity() {
     }
 
     private fun blankShizuleTemplate(): String {
-        return shizuleJson(
-            id = "com.example.my_shizule",
-            name = "My Shizule",
-            version = "1.0.0",
-            description = "Describe what this shizule does.",
-            actions = listOf(
-                "Run" to listOf(
-                    "echo Hello from Shizulu"
-                ),
-                "Restore" to listOf(
-                    "echo Restore action goes here"
-                )
-            )
-        )
+        return JSONObject().apply {
+            put("schema", 1)
+            put("id", "com.example.my_shizule")
+            put("name", "My Shizule")
+            put("version", "1.0.0")
+            put("description", "Describe what this shizule does.")
+            put("variables", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("name", "package")
+                    put("label", "Target package")
+                    put("type", "package")
+                    put("default", "com.example.app")
+                    put("required", true)
+                })
+            })
+            put("actions", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("id", "run")
+                    put("label", "Run")
+                    put("commands", JSONArray().apply {
+                        put(JSONObject().apply { put("exec", "echo Applying to {{package}}") })
+                        put(JSONObject().apply { put("exec", "cmd appops get {{package}}") })
+                    })
+                })
+                put(JSONObject().apply {
+                    put("id", "restore")
+                    put("label", "Restore")
+                    put("commands", JSONArray().apply {
+                        put(JSONObject().apply { put("exec", "echo Restore action for {{package}} goes here") })
+                    })
+                })
+            })
+        }.toString(2)
     }
 
     private fun shizuleJson(
@@ -1877,10 +2029,11 @@ class MainActivity : Activity() {
         }.toString(2)
     }
 
-    private fun dryRunAction(shizule: Shizule, action: ShizuleAction) {
+    private fun dryRunAction(shizule: Shizule, action: ShizuleAction, commands: List<ShizuleCommand> = action.commands) {
+        val resolvedAction = action.copy(commands = commands)
         appendLog("Dry run started: ${shizule.name}/${action.label}")
-        val preview = buildDryRunPreview(listOf(shizule to action))
-        action.commands.forEachIndexed { index, command ->
+        val preview = buildDryRunPreview(listOf(shizule to resolvedAction))
+        commands.forEachIndexed { index, command ->
             appendLog("Dry run ${shizule.name}/${action.label} command ${index + 1}: ${command.exec}")
         }
         appendLog("Dry run finished: ${shizule.name}/${action.label}")
@@ -2600,9 +2753,12 @@ class MainActivity : Activity() {
         private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
         private const val MAX_OUTPUT_CHARS = 12_000
+        private const val MAX_VARIABLE_VALUE_LENGTH = 240
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
+        private val NUMBER_VALUE_PATTERN = Regex("^-?[0-9]+(\\.[0-9]+)?$")
+        private val VARIABLE_PATTERN = Regex("\\{\\{([A-Za-z][A-Za-z0-9_]*)}}")
         private val SAFE_SHELL_TOKEN_PATTERN = Regex("^[A-Za-z0-9_./:-]+$")
 
         private val PROFILES = listOf(
