@@ -2866,8 +2866,8 @@ class MainActivity : Activity() {
             runCatching {
                 val release = fetchLatestRelease()
                 release.copy(
-                    checkedAgainst = BuildConfig.GIT_SHA,
-                    updateAvailable = releaseIsAheadOfCurrent(release)
+                    checkedAgainst = BuildConfig.VERSION_CODE.toString(),
+                    updateAvailable = release.isNewerThanCurrentBuild()
                 )
             }
                 .onSuccess { release ->
@@ -2876,12 +2876,12 @@ class MainActivity : Activity() {
                     appendLog("Update check ${if (updateAvailable) "found newer ${release.tag}" else "blocked stale/current ${release.tag}"}")
                     mainHandler.post {
                         if (updateAvailable) {
-                            val status = "Update available: ${release.tag}\nCurrent: ${BuildConfig.GIT_SHA}\nLatest: ${release.commitSha ?: "unknown commit"}"
+                            val status = "Update available: ${release.tag}\nCurrent: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\nLatest: ${release.tag}"
                             updaterStatusText.text = status
                             saveUpdaterState(status, release)
                             setUpdaterButton(true)
                         } else {
-                            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})\nLatest release is not ahead of this app."
+                            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\nLatest release is not newer than this app."
                             updaterStatusText.text = status
                             saveUpdaterState(status, null)
                             setUpdaterButton(false)
@@ -2944,6 +2944,14 @@ class MainActivity : Activity() {
     }
 
     private fun fetchLatestRelease(): GithubRelease {
+        return runCatching { fetchLatestReleaseFromApi() }
+            .getOrElse {
+                appendLog("GitHub release API fallback triggered: ${it.message ?: it.javaClass.simpleName}")
+                fetchLatestReleaseFromRedirect()
+            }
+    }
+
+    private fun fetchLatestReleaseFromApi(): GithubRelease {
         val json = httpGet(GITHUB_LATEST_RELEASE_URL)
         val obj = JSONObject(json)
         val assets = obj.optJSONArray("assets") ?: JSONArray()
@@ -2974,15 +2982,35 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun releaseIsAheadOfCurrent(release: GithubRelease): Boolean {
-        val latest = release.commitSha?.takeIf { it.isNotBlank() } ?: return false
-        val current = BuildConfig.GIT_SHA.takeIf { it.isNotBlank() && it != "unknown" } ?: return false
-        if (latest.startsWith(current, ignoreCase = true) || current.startsWith(latest, ignoreCase = true)) {
-            return false
+    private fun fetchLatestReleaseFromRedirect(): GithubRelease {
+        val connection = (URL(GITHUB_LATEST_RELEASE_PAGE).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            requestMethod = "GET"
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "Shizulu/${BuildConfig.VERSION_NAME}")
         }
-        val compareUrl = String.format(Locale.US, GITHUB_COMPARE_URL, current, latest)
-        val status = JSONObject(httpGet(compareUrl)).optString("status")
-        return status.equals("ahead", ignoreCase = true)
+        val finalUrl = try {
+            connection.useResponse { stream ->
+                stream.buffered().use { buffer ->
+                    val scratch = ByteArray(256)
+                    buffer.read(scratch)
+                }
+            }
+            connection.url.toString()
+        } finally {
+            connection.disconnect()
+        }
+        val tag = finalUrl.substringAfterLast('/').takeIf { it.startsWith("build-", ignoreCase = true) }
+            ?: error("Could not resolve latest release tag.")
+        val apkName = "Shizulu-$tag.apk"
+        return GithubRelease(
+            tag = tag,
+            name = "Shizulu $tag",
+            commitSha = null,
+            apkName = apkName,
+            apkUrl = "https://github.com/Glitch98777/shizulu/releases/download/$tag/$apkName"
+        )
     }
 
     private fun httpGet(url: String): String {
@@ -3063,11 +3091,11 @@ class MainActivity : Activity() {
 
     private fun visibleUpdaterStatus(release: GithubRelease?): String {
         if (release != null && !release.isReadyForCurrentBuild()) {
-            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+            val status = "You're up to date.\nCurrent build: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
             saveUpdaterState(status, null)
             return status
         }
-        return savedUpdaterStatus() ?: "Current build: ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA})"
+        return savedUpdaterStatus() ?: "Current build: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
     }
 
     private fun savedLatestRelease(): GithubRelease? {
@@ -3095,7 +3123,17 @@ class MainActivity : Activity() {
     }
 
     private fun GithubRelease.isReadyForCurrentBuild(): Boolean {
-        return updateAvailable && checkedAgainst.equals(BuildConfig.GIT_SHA, ignoreCase = true)
+        return updateAvailable && checkedAgainst == BuildConfig.VERSION_CODE.toString() && isNewerThanCurrentBuild()
+    }
+
+    private fun GithubRelease.isNewerThanCurrentBuild(): Boolean {
+        return releaseBuildNumber() > BuildConfig.VERSION_CODE
+    }
+
+    private fun GithubRelease.releaseBuildNumber(): Int {
+        return tag.substringAfter("build-", "")
+            .takeWhile { it.isDigit() }
+            .toIntOrNull() ?: 0
     }
 
     private fun showOutput(title: String, output: String) {
@@ -3310,7 +3348,7 @@ class MainActivity : Activity() {
         private const val MAX_OUTPUT_CHARS = 12_000
         private const val MAX_VARIABLE_VALUE_LENGTH = 240
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
-        private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
+        private const val GITHUB_LATEST_RELEASE_PAGE = "https://github.com/Glitch98777/shizulu/releases/latest"
         private const val SHIZULE_STORE_RAW_BASE = "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples"
         private const val SHIZULE_STORE_INDEX_URL = "$SHIZULE_STORE_RAW_BASE/store-index.json"
         private const val SHIZULE_STORE_ISSUES_URL = "https://api.github.com/repos/Glitch98777/shizulu/issues?state=open&per_page=50"
