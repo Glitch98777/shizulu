@@ -657,6 +657,12 @@ class MainActivity : Activity() {
                     leftMargin = dp(10)
                 })
             }, spacedParams(top = 10))
+            addView(
+                compactButton("Install Shell Interceptors", filled = true) {
+                    runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
+                },
+                spacedParams(top = 10)
+            )
         }
     }
 
