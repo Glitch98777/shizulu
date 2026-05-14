@@ -24,6 +24,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - SU Bridge now accepts standard su call shapes like `su -c`, `su 0 -c`, `su --command`, compact `-ccommand`, and stdin through the provider or custom `/data/local/tmp/su` path.
 - SU Bridge tools now include a ColorBlendr compatibility helper that detects ColorBlendr, explains why libsu root mode cannot be intercepted by a normal APK, and pushes ColorBlendr onto its Shizuku/rootless preference path through privileged ADB.
 - SU Bridge can now install Shizuku+-style shell interceptors under `/data/local/tmp/shizulu-bin` for `su`, `pm`, `am`, `settings`, `cmd`, and `appops`, plus a `shizulu-shell` PATH launcher for compatible tools.
+- SU Bridge can now install a fake system su layout under `/data/local/tmp/shizulu-fake-system/system/bin/su` and `/system/xbin/su` with a `shizulu-system-shell` launcher for compatible tools that search `PATH`.
 - Rootless Power Tools now has a direct Install Shell Interceptors button on the card.
 - SU Bridge now requires manual Spoof Root Apps grants before compatible app root-style requests are answered and routed through ADB/Shizuku.
 - Rootless Power Tools now replaces automatic root-request detection with a manual Spoof Root Apps manager where you can search installed apps, grant or revoke spoof root, and let approved compatible requests run through privileged ADB/Shizuku.

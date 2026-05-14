@@ -666,6 +666,12 @@ class MainActivity : Activity() {
                 spacedParams(top = 10)
             )
             addView(
+                compactButton("Fake /system/bin/su", filled = false) {
+                    runPowerCommand("Install Fake /system/bin/su", fakeSystemSuInstallCommand(), "com.shizulu.fake_system_su")
+                },
+                spacedParams(top = 10)
+            )
+            addView(
                 compactButton("Spoof Root Apps", filled = false) { showSpoofRootAppsManager() },
                 spacedParams(top = 10)
             )
@@ -1255,6 +1261,7 @@ class MainActivity : Activity() {
             "Spoof root app grants",
             "ColorBlendr compatibility",
             "Install shell interceptors",
+            "Install fake /system/bin/su",
             "Install bridge shizule",
             "Install /data/local/tmp bridge script",
             "Bridge status",
@@ -1272,10 +1279,11 @@ class MainActivity : Activity() {
                     4 -> showSpoofRootAppsManager()
                     5 -> showColorBlendrCompatibility()
                     6 -> runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
-                    7 -> installSuBridgeShizule()
-                    8 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    9 -> showSuBridgeStatus()
-                    10 -> showSuBridgeApiSample()
+                    7 -> runPowerCommand("Install Fake /system/bin/su", fakeSystemSuInstallCommand(), "com.shizulu.fake_system_su")
+                    8 -> installSuBridgeShizule()
+                    9 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    10 -> showSuBridgeStatus()
+                    11 -> showSuBridgeApiSample()
                 }
             }
             .setNegativeButton("OK", null)
@@ -1342,6 +1350,10 @@ class MainActivity : Activity() {
             Compatibility shim:
             Run "Install /data/local/tmp bridge script", then point compatible apps to:
             /data/local/tmp/su
+
+            Fake system su:
+            Run "Install fake /system/bin/su", then launch compatible tools through:
+            /data/local/tmp/shizulu-fake-system/shizulu-system-shell
 
             Hardcoded /system/bin/su calls cannot be intercepted without root/system access.
 
@@ -2123,11 +2135,14 @@ class MainActivity : Activity() {
                 "Install Bridge Script" to listOf(
                     suBridgeInstallCommand()
                 ),
+                "Install Fake System SU" to listOf(
+                    fakeSystemSuInstallCommand()
+                ),
                 "Max ADB Elevation" to listOf(
                     maxAdbElevationCommand()
                 ),
                 "Remove Bridge Script" to listOf(
-                    "rm -f /data/local/tmp/shizulu-su /data/local/tmp/su; echo removed Shizulu SU Bridge scripts"
+                    "rm -f /data/local/tmp/shizulu-su /data/local/tmp/su; rm -rf /data/local/tmp/shizulu-fake-system; echo removed Shizulu SU Bridge scripts"
                 )
             )
         )
@@ -2199,6 +2214,109 @@ class MainActivity : Activity() {
             "echo installed /data/local/tmp/su",
             "echo compatible apps can use /data/local/tmp/su as their custom su path"
         ).joinToString("\n")
+    }
+
+    private fun fakeSystemSuInstallCommand(): String {
+        return """
+            base=/data/local/tmp/shizulu-fake-system
+            bindir="${'$'}base/system/bin"
+            xbindir="${'$'}base/system/xbin"
+            uri='content://com.shizulu.manager.su'
+            mkdir -p "${'$'}bindir" "${'$'}xbindir"
+            cat > "${'$'}base/shizulu-su" <<'EOF'
+            #!/system/bin/sh
+            uri='content://com.shizulu.manager.su'
+            version='Shizulu fake /system/bin/su 1.0'
+            command=''
+            while [ "${'$'}#" -gt 0 ]; do
+              case "${'$'}1" in
+                -v|--version)
+                  echo "${'$'}version"
+                  exit 0
+                  ;;
+                -V)
+                  echo 1
+                  exit 0
+                  ;;
+                -h|--help)
+                  echo 'usage: su [options] [-c command]'
+                  exit 0
+                  ;;
+                -c|--command)
+                  shift
+                  command="${'$'}*"
+                  break
+                  ;;
+                -c*)
+                  command="${'$'}{1#-c}"
+                  shift
+                  if [ "${'$'}#" -gt 0 ]; then command="${'$'}command ${'$'}*"; fi
+                  break
+                  ;;
+                -s|--shell|-Z|--context)
+                  shift
+                  if [ "${'$'}#" -gt 0 ]; then shift; fi
+                  ;;
+                -p|-l|-m|-mm|-M|--mount-master|--preserve-environment)
+                  shift
+                  ;;
+                0|root|shell)
+                  shift
+                  ;;
+                *)
+                  command="${'$'}*"
+                  break
+                  ;;
+              esac
+            done
+            if [ -z "${'$'}command" ] && [ ! -t 0 ]; then
+              command="${'$'}(/system/bin/cat)"
+            fi
+            if [ -z "${'$'}command" ]; then
+              echo 'Shizulu fake su: interactive shells cannot be proxied without root.'
+              exit 1
+            fi
+            result="${'$'}(/system/bin/cmd content call --uri "${'$'}uri" --method su --arg "su -c ${'$'}command" 2>&1)"
+            echo "${'$'}result"
+            echo "${'$'}result" | /system/bin/grep -q 'success=false' && exit 1
+            exit 0
+            EOF
+            cp "${'$'}base/shizulu-su" "${'$'}bindir/su"
+            cp "${'$'}base/shizulu-su" "${'$'}xbindir/su"
+            chmod 755 "${'$'}base/shizulu-su" "${'$'}bindir/su" "${'$'}xbindir/su"
+            cat > "${'$'}base/shizulu-system-shell" <<'EOF'
+            #!/system/bin/sh
+            export SHIZULU_FAKE_SYSTEM=1
+            export SHIZULU_FAKE_SYSTEM_ROOT=/data/local/tmp/shizulu-fake-system
+            export PATH="/data/local/tmp/shizulu-fake-system/system/bin:/data/local/tmp/shizulu-fake-system/system/xbin:/data/local/tmp/shizulu-bin:${'$'}PATH"
+            exec /system/bin/sh "${'$'}@"
+            EOF
+            chmod 755 "${'$'}base/shizulu-system-shell"
+            cat > "${'$'}base/README.txt" <<'EOF'
+            Shizulu fake system su
+
+            Fake su paths:
+            /data/local/tmp/shizulu-fake-system/system/bin/su
+            /data/local/tmp/shizulu-fake-system/system/xbin/su
+
+            Launcher:
+            /data/local/tmp/shizulu-fake-system/shizulu-system-shell
+
+            This does not replace the real /system/bin/su path. It makes compatible tools that search PATH or accept a custom shell/custom su path resolve Shizulu's fake su first.
+            EOF
+            ln -sf "${'$'}bindir/su" /data/local/tmp/su 2>/dev/null || cp "${'$'}bindir/su" /data/local/tmp/su
+            chmod 755 /data/local/tmp/su
+            echo "Installed fake system su layout:"
+            ls -l "${'$'}bindir" "${'$'}xbindir" "${'$'}base/shizulu-system-shell"
+            echo
+            echo "Use this launcher for compatible command-line tools:"
+            echo "${'$'}base/shizulu-system-shell"
+            echo
+            echo "Inside that shell, command -v su should resolve to:"
+            PATH="${'$'}bindir:${'$'}xbindir:/data/local/tmp/shizulu-bin:${'$'}PATH" command -v su
+            echo
+            echo "Absolute /system/bin/su cannot be spoofed without root or a writable system mount."
+        """.trimIndent()
     }
 
     private fun shellInterceptorInstallCommand(): String {
