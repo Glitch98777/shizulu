@@ -124,7 +124,7 @@ enum class ShizuleVariableType {
     companion object {
         fun from(value: String): ShizuleVariableType {
             return when (value.trim().lowercase()) {
-                "package", "packagename", "package_name", "pkg" -> PACKAGE
+                "app", "target_app", "package", "packagename", "package_name", "pkg" -> PACKAGE
                 "number", "int", "integer" -> NUMBER
                 else -> TEXT
             }

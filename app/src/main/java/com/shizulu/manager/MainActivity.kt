@@ -45,6 +45,11 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
+private data class AppChoice(
+    val label: String,
+    val packageName: String
+)
+
 class MainActivity : Activity() {
     private val store by lazy { ShizuleStore(this) }
     private val logPrefs by lazy { getSharedPreferences("shizulu_logs", MODE_PRIVATE) }
@@ -1762,7 +1767,7 @@ class MainActivity : Activity() {
                     ShizuleVariable(
                         name = name,
                         label = name.replace('_', ' ').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() },
-                        type = if (name.contains("package", ignoreCase = true) || name.equals("pkg", ignoreCase = true)) {
+                        type = if (isPackageVariableName(name)) {
                             ShizuleVariableType.PACKAGE
                         } else {
                             ShizuleVariableType.TEXT
@@ -1812,13 +1817,33 @@ class MainActivity : Activity() {
                     setHintTextColor(COLORS.muted)
                     inputType = when (variable.type) {
                         ShizuleVariableType.NUMBER -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                        ShizuleVariableType.PACKAGE -> InputType.TYPE_NULL
                         else -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                    }
+                    if (variable.type == ShizuleVariableType.PACKAGE) {
+                        isFocusable = false
+                        isCursorVisible = false
+                        setOnClickListener { showPackagePicker(variable, this) }
                     }
                     setPadding(dp(14), dp(10), dp(14), dp(10))
                     background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
                 }
                 inputs[variable] = input
-                addView(input)
+                if (variable.type == ShizuleVariableType.PACKAGE) {
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(compactButton("Pick", false) { showPackagePicker(variable, input) }, LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            dp(42)
+                        ).apply {
+                            marginStart = dp(8)
+                        })
+                    })
+                } else {
+                    addView(input)
+                }
             }
         }
 
@@ -1848,6 +1873,38 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
+    private fun showPackagePicker(variable: ShizuleVariable, input: EditText) {
+        val apps = installedAppChoices()
+        if (apps.isEmpty()) {
+            Toast.makeText(this, "No installed apps found", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = apps.map { "${it.label}\n${it.packageName}" }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Pick ${variable.label}")
+            .setItems(labels) { _, index ->
+                val choice = apps[index]
+                input.setText(choice.packageName)
+                input.error = null
+                appendLog("Selected ${choice.packageName} for variable ${variable.name}")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun installedAppChoices(): List<AppChoice> {
+        val pm = packageManager
+        return pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            .map { app ->
+                AppChoice(
+                    label = app.loadLabel(pm).toString().ifBlank { app.packageName },
+                    packageName = app.packageName
+                )
+            }
+            .distinctBy { it.packageName }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+    }
+
     private fun validateVariableValue(variable: ShizuleVariable, value: String): String? {
         if (variable.required && value.isBlank()) return "${variable.label} is required."
         if (value.isBlank()) return null
@@ -1874,6 +1931,17 @@ class MainActivity : Activity() {
             length <= 2 -> "**"
             else -> "*".repeat(length - 2) + takeLast(2)
         }
+    }
+
+    private fun isPackageVariableName(name: String): Boolean {
+        val normalized = name.lowercase(Locale.US)
+        return normalized == "pkg" ||
+            normalized == "app" ||
+            normalized == "target_app" ||
+            normalized == "target_package" ||
+            normalized.endsWith("_pkg") ||
+            normalized.endsWith("_app") ||
+            normalized.contains("package")
     }
 
     private fun builtInTestShizules(): List<String> {
