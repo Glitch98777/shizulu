@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.display_density_lab",
+  "name": "Display Density Lab",
+  "version": "1.0.0",
+  "description": "Changes Android display density presets with a reset action. High risk because bad density values can make the UI hard to use.",
+  "actions": [
+    {
+      "id": "status",
+      "label": "Status",
+      "commands": [
+        {
+          "exec": "wm size; wm density"
+        }
+      ]
+    },
+    {
+      "id": "compact",
+      "label": "Compact",
+      "commands": [
+        {
+          "exec": "wm density 420"
+        }
+      ]
+    },
+    {
+      "id": "comfortable",
+      "label": "Comfort",
+      "commands": [
+        {
+          "exec": "wm density 480"
+        }
+      ]
+    },
+    {
+      "id": "large",
+      "label": "Large",
+      "commands": [
+        {
+          "exec": "wm density 540"
+        }
+      ]
+    },
+    {
+      "id": "reset",
+      "label": "Reset",
+      "commands": [
+        {
+          "exec": "wm density reset; wm size reset"
+        }
+      ]
+    }
+  ]
+}

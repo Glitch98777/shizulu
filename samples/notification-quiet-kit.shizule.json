@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.notification_quiet_kit",
+  "name": "Notification Quiet Kit",
+  "version": "1.0.0",
+  "description": "Toggles notification dots and heads-up notification settings where the ROM exposes them through Android settings.",
+  "actions": [
+    {
+      "id": "quiet",
+      "label": "Quiet",
+      "commands": [
+        {
+          "exec": "settings put secure notification_badging 0"
+        },
+        {
+          "exec": "settings put global heads_up_notifications_enabled 0 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "normal",
+      "label": "Normal",
+      "commands": [
+        {
+          "exec": "settings put secure notification_badging 1"
+        },
+        {
+          "exec": "settings put global heads_up_notifications_enabled 1 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "label": "Status",
+      "commands": [
+        {
+          "exec": "echo 'notification_badging='$(settings get secure notification_badging); echo 'heads_up_notifications_enabled='$(settings get global heads_up_notifications_enabled 2>/dev/null)"
+        }
+      ]
+    }
+  ]
+}

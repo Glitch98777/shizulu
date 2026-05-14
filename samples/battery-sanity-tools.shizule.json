@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.battery_sanity_tools",
+  "name": "Battery Sanity Tools",
+  "version": "1.0.0",
+  "description": "Simple battery saver toggles and battery status checks using Android shell commands.",
+  "actions": [
+    {
+      "id": "status",
+      "label": "Status",
+      "commands": [
+        {
+          "exec": "dumpsys battery; echo; echo 'Battery saver:'; settings get global low_power"
+        }
+      ]
+    },
+    {
+      "id": "saver_on",
+      "label": "Saver On",
+      "commands": [
+        {
+          "exec": "cmd power set-mode 1 2>/dev/null || settings put global low_power 1"
+        }
+      ]
+    },
+    {
+      "id": "saver_off",
+      "label": "Saver Off",
+      "commands": [
+        {
+          "exec": "cmd power set-mode 0 2>/dev/null || settings put global low_power 0"
+        }
+      ]
+    },
+    {
+      "id": "adaptive_on",
+      "label": "Adaptive On",
+      "commands": [
+        {
+          "exec": "settings put global adaptive_battery_management_enabled 1 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "adaptive_off",
+      "label": "Adaptive Off",
+      "commands": [
+        {
+          "exec": "settings put global adaptive_battery_management_enabled 0 2>/dev/null || true"
+        }
+      ]
+    }
+  ]
+}

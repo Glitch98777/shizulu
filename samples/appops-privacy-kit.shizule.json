@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.appops_privacy_kit",
+  "name": "AppOps Privacy Kit",
+  "version": "1.0.0",
+  "description": "Inspects and adjusts selected app AppOps for background activity, wake locks, and notification posting.",
+  "variables": [
+    {
+      "name": "target_app",
+      "label": "Target app",
+      "type": "package",
+      "default": "",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "inspect",
+      "label": "Inspect",
+      "commands": [
+        {
+          "exec": "cmd appops get {{target_app}}"
+        }
+      ]
+    },
+    {
+      "id": "background_quiet",
+      "label": "Quiet BG",
+      "commands": [
+        {
+          "exec": "cmd appops set {{target_app}} RUN_IN_BACKGROUND ignore 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set {{target_app}} RUN_ANY_IN_BACKGROUND ignore 2>/dev/null || true"
+        },
+        {
+          "exec": "cmd appops set {{target_app}} WAKE_LOCK ignore 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "notifications_ignore",
+      "label": "Mute Notifs",
+      "commands": [
+        {
+          "exec": "cmd appops set {{target_app}} POST_NOTIFICATION ignore 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "restore_appops",
+      "label": "Restore",
+      "commands": [
+        {
+          "exec": "cmd appops reset {{target_app}}"
+        }
+      ]
+    }
+  ]
+}

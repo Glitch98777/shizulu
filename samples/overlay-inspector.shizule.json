@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.overlay_inspector",
+  "name": "Overlay Inspector",
+  "version": "1.0.0",
+  "description": "Lists runtime resource overlays and can enable or disable a typed overlay package/id.",
+  "variables": [
+    {
+      "name": "target_overlay",
+      "label": "Overlay package or id",
+      "type": "text",
+      "default": "",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "list",
+      "label": "List",
+      "commands": [
+        {
+          "exec": "cmd overlay list"
+        }
+      ]
+    },
+    {
+      "id": "enable",
+      "label": "Enable",
+      "commands": [
+        {
+          "exec": "cmd overlay enable --user 0 {{target_overlay}}"
+        }
+      ]
+    },
+    {
+      "id": "disable",
+      "label": "Disable",
+      "commands": [
+        {
+          "exec": "cmd overlay disable --user 0 {{target_overlay}}"
+        }
+      ]
+    }
+  ]
+}

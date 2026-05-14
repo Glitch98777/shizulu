@@ -29,6 +29,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Public Store refresh also reads open `[Store]` GitHub issues, so community shizules can become visible from GitHub without waiting for a manual index merge.
 - Store cards now show Install, Update, or Already up to date based on the installed shizule version instead of saying Reinstall.
 - Update checks no longer depend on GitHub's compare API, and fall back to the public latest-release redirect if the releases API returns HTTP 403.
+- Shizule Store now includes a larger low/medium/high risk module set: diagnostics, battery tools, notification quieting, Private DNS, app standby, AppOps privacy, permission grants, overlays, background lockdown, package disabling, app data reset, and display density tools.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

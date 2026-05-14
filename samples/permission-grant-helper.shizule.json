@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.permission_grant_helper",
+  "name": "Permission Grant Helper",
+  "version": "1.0.0",
+  "description": "Attempts useful ADB-grantable permissions for a selected app. Commands only work when the target app declares the permission.",
+  "variables": [
+    {
+      "name": "target_app",
+      "label": "Target app",
+      "type": "package",
+      "default": "",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "inspect",
+      "label": "Inspect",
+      "commands": [
+        {
+          "exec": "dumpsys package {{target_app}} | sed -n '/requested permissions:/,/install permissions:/p' | head -120"
+        }
+      ]
+    },
+    {
+      "id": "grant_notifications",
+      "label": "Notifications",
+      "commands": [
+        {
+          "exec": "pm grant {{target_app}} android.permission.POST_NOTIFICATIONS 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "grant_secure_settings",
+      "label": "Secure Set",
+      "commands": [
+        {
+          "exec": "pm grant {{target_app}} android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "grant_dump_logs",
+      "label": "Dump/Logs",
+      "commands": [
+        {
+          "exec": "pm grant {{target_app}} android.permission.DUMP 2>/dev/null || true"
+        },
+        {
+          "exec": "pm grant {{target_app}} android.permission.READ_LOGS 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "revoke_notifications",
+      "label": "Revoke Notifs",
+      "commands": [
+        {
+          "exec": "pm revoke {{target_app}} android.permission.POST_NOTIFICATIONS 2>/dev/null || true"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.app_data_reset_toolkit",
+  "name": "App Data Reset Toolkit",
+  "version": "1.0.0",
+  "description": "Force-stops or clears all data for a selected app. High risk because Clear Data is destructive and cannot be undone by Shizulu.",
+  "variables": [
+    {
+      "name": "target_app",
+      "label": "Target app",
+      "type": "package",
+      "default": "",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "inspect_size",
+      "label": "Inspect",
+      "commands": [
+        {
+          "exec": "dumpsys package {{target_app}} | grep -E 'dataDir|versionName|userId|pkg=' | head -80"
+        }
+      ]
+    },
+    {
+      "id": "force_stop",
+      "label": "Force Stop",
+      "commands": [
+        {
+          "exec": "am force-stop {{target_app}}"
+        }
+      ]
+    },
+    {
+      "id": "clear_data",
+      "label": "Clear Data",
+      "commands": [
+        {
+          "exec": "pm clear {{target_app}}"
+        }
+      ]
+    }
+  ]
+}

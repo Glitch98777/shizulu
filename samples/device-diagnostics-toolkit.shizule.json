@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.device_diagnostics_toolkit",
+  "name": "Device Diagnostics Toolkit",
+  "version": "1.0.0",
+  "description": "Read-only device, storage, battery, and package diagnostics for checking what Shizulu can see through shell privileges.",
+  "actions": [
+    {
+      "id": "device_summary",
+      "label": "Device Summary",
+      "commands": [
+        {
+          "exec": "echo 'Identity:'; id; echo; echo 'Device:'; getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.product.device; echo; echo 'Android:'; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop ro.build.fingerprint"
+        }
+      ]
+    },
+    {
+      "id": "storage_snapshot",
+      "label": "Storage",
+      "commands": [
+        {
+          "exec": "echo 'Mounted storage:'; df -h /data /sdcard 2>/dev/null; echo; echo 'Disk stats:'; dumpsys diskstats 2>/dev/null | head -80"
+        }
+      ]
+    },
+    {
+      "id": "power_snapshot",
+      "label": "Power",
+      "commands": [
+        {
+          "exec": "echo 'Battery:'; dumpsys battery; echo; echo 'Power settings:'; settings get global low_power; settings get global adaptive_battery_management_enabled 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "package_counts",
+      "label": "Packages",
+      "commands": [
+        {
+          "exec": "echo 'User packages:'; pm list packages -3 | wc -l; echo 'System packages:'; pm list packages -s | wc -l; echo; echo 'Recently listed packages:'; pm list packages | head -120"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.private_dns_switchboard",
+  "name": "Private DNS Switchboard",
+  "version": "1.0.0",
+  "description": "Switches Android Private DNS between automatic, off, Cloudflare, Google, and Quad9 presets.",
+  "actions": [
+    {
+      "id": "auto",
+      "label": "Automatic",
+      "commands": [
+        {
+          "exec": "settings put global private_dns_mode opportunistic; settings delete global private_dns_specifier 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "off",
+      "label": "Off",
+      "commands": [
+        {
+          "exec": "settings put global private_dns_mode off; settings delete global private_dns_specifier 2>/dev/null || true"
+        }
+      ]
+    },
+    {
+      "id": "cloudflare",
+      "label": "Cloudflare",
+      "commands": [
+        {
+          "exec": "settings put global private_dns_mode hostname; settings put global private_dns_specifier one.one.one.one"
+        }
+      ]
+    },
+    {
+      "id": "google",
+      "label": "Google",
+      "commands": [
+        {
+          "exec": "settings put global private_dns_mode hostname; settings put global private_dns_specifier dns.google"
+        }
+      ]
+    },
+    {
+      "id": "quad9",
+      "label": "Quad9",
+      "commands": [
+        {
+          "exec": "settings put global private_dns_mode hostname; settings put global private_dns_specifier dns.quad9.net"
+        }
+      ]
+    },
+    {
+      "id": "status",
+      "label": "Status",
+      "commands": [
+        {
+          "exec": "echo 'private_dns_mode='$(settings get global private_dns_mode); echo 'private_dns_specifier='$(settings get global private_dns_specifier)"
+        }
+      ]
+    }
+  ]
+}

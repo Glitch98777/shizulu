@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.app_standby_manager",
+  "name": "App Standby Manager",
+  "version": "1.0.0",
+  "description": "Moves a selected app between Android standby buckets to test or tune background behavior.",
+  "variables": [
+    {
+      "name": "target_app",
+      "label": "Target app",
+      "type": "package",
+      "default": "",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "inspect",
+      "label": "Inspect",
+      "commands": [
+        {
+          "exec": "am get-standby-bucket {{target_app}} 2>/dev/null || dumpsys usagestats | grep -A3 {{target_app}}"
+        }
+      ]
+    },
+    {
+      "id": "active",
+      "label": "Active",
+      "commands": [
+        {
+          "exec": "am set-standby-bucket {{target_app}} active"
+        }
+      ]
+    },
+    {
+      "id": "working_set",
+      "label": "Working",
+      "commands": [
+        {
+          "exec": "am set-standby-bucket {{target_app}} working_set"
+        }
+      ]
+    },
+    {
+      "id": "rare",
+      "label": "Rare",
+      "commands": [
+        {
+          "exec": "am set-standby-bucket {{target_app}} rare"
+        }
+      ]
+    },
+    {
+      "id": "restricted",
+      "label": "Restricted",
+      "commands": [
+        {
+          "exec": "am set-standby-bucket {{target_app}} restricted"
+        }
+      ]
+    }
+  ]
+}

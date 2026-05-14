@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.store.package_disabler",
+  "name": "Package Disabler",
+  "version": "1.0.0",
+  "description": "Disables or re-enables a selected package for user 0. High risk because disabling important packages can break parts of the system UI or apps.",
+  "variables": [
+    {
+      "name": "target_app",
+      "label": "Target package",
+      "type": "package",
+      "default": "",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "inspect",
+      "label": "Inspect",
+      "commands": [
+        {
+          "exec": "dumpsys package {{target_app}} | head -120"
+        }
+      ]
+    },
+    {
+      "id": "disable",
+      "label": "Disable",
+      "commands": [
+        {
+          "exec": "pm disable-user --user 0 {{target_app}}"
+        }
+      ]
+    },
+    {
+      "id": "enable",
+      "label": "Enable",
+      "commands": [
+        {
+          "exec": "pm enable {{target_app}}"
+        }
+      ]
+    },
+    {
+      "id": "force_stop",
+      "label": "Force Stop",
+      "commands": [
+        {
+          "exec": "am force-stop {{target_app}}"
+        }
+      ]
+    }
+  ]
+}
