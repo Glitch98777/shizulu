@@ -91,7 +91,7 @@ The in-app Store reads the public index at `samples/store-index.json`. Each entr
 
 To publish a shizule, use Store > Create, edit the JSON, then tap Publish. Shizulu installs it, makes it visible in your local Store immediately, and opens a prefilled GitHub submission. The public Store also reads open `[Store]` GitHub issues, so community submissions can appear from GitHub without waiting for a manual index merge.
 
-The bundled Store index includes low-risk read-only tools, medium-risk settings/AppOps tools, and high-risk package/data/display tools so users can choose how spicy they want to get before running a shizule.
+Community Store submissions may paste full JSON or link to a raw `.shizule.json` file in this repository. The expanded low/medium/high risk module pack is published through GitHub submissions instead of being hardcoded into the curated baseline index.
 
 ## Safety Model
 

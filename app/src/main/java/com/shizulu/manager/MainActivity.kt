@@ -1336,7 +1336,9 @@ class MainActivity : Activity() {
                 val issue = issues.getJSONObject(index)
                 val title = issue.optString("title")
                 if (!title.startsWith("[Store]", ignoreCase = true)) continue
-                val raw = extractJsonBlock(issue.optString("body")).orEmpty()
+                val body = issue.optString("body")
+                val sourceUrl = extractStoreSourceUrl(body)
+                val raw = extractJsonBlock(body) ?: sourceUrl?.let { httpGet(it) } ?: continue
                 val shizule = runCatching { Shizule.fromJson(raw) }.getOrNull() ?: continue
                 add(
                     StoreItem(
@@ -1345,10 +1347,10 @@ class MainActivity : Activity() {
                         version = shizule.version,
                         description = shizule.description,
                         author = issue.optJSONObject("user")?.optString("login", "Community") ?: "Community",
-                        url = issue.optString("html_url"),
+                        url = sourceUrl ?: issue.optString("html_url"),
                         tags = listOf("community", "auto-published"),
-                        risk = "Community",
-                        rawJson = raw
+                        risk = extractIssueField(body, "Risk") ?: "Community",
+                        rawJson = if (sourceUrl == null) raw else ""
                     )
                 )
             }
@@ -1364,6 +1366,19 @@ class MainActivity : Activity() {
         val end = body.indexOf("```", jsonStart + 1)
         if (end < 0) return null
         return body.substring(jsonStart + 1, end).trim().takeIf { it.isNotBlank() }
+    }
+
+    private fun extractStoreSourceUrl(body: String): String? {
+        return STORE_SOURCE_URL_PATTERN.find(body)?.value
+            ?.takeIf { it.contains("/samples/") && it.endsWith(".shizule.json", ignoreCase = true) }
+    }
+
+    private fun extractIssueField(body: String, label: String): String? {
+        return body.lineSequence()
+            .firstOrNull { it.trim().startsWith("$label:", ignoreCase = true) }
+            ?.substringAfter(':')
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 
     private fun parseStoreItem(obj: JSONObject): StoreItem {
@@ -3356,6 +3371,7 @@ class MainActivity : Activity() {
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
         private val NUMBER_VALUE_PATTERN = Regex("^-?[0-9]+(\\.[0-9]+)?$")
         private val VARIABLE_PATTERN = Regex("\\{\\{([A-Za-z][A-Za-z0-9_]*)\\}\\}")
+        private val STORE_SOURCE_URL_PATTERN = Regex("https://raw\\.githubusercontent\\.com/Glitch98777/shizulu/[^\\s)]+\\.shizule\\.json")
         private val SAFE_SHELL_TOKEN_PATTERN = Regex("^[A-Za-z0-9_./:-]+$")
 
         private val PROFILES = listOf(

@@ -1,18 +1,8 @@
 {
   "schema": 1,
   "name": "Shizulu Public Store",
-  "description": "Community-visible shizules reviewed through the Shizulu GitHub repository.",
+  "description": "Curated baseline shizules plus community-visible submissions from GitHub issues.",
   "items": [
-    {
-      "id": "com.shizulu.store.device_diagnostics_toolkit",
-      "name": "Device Diagnostics Toolkit",
-      "version": "1.0.0",
-      "description": "Read-only device, storage, battery, and package diagnostics for checking shell capabilities.",
-      "author": "Shizulu",
-      "risk": "Low",
-      "tags": ["diagnostics", "read-only"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/device-diagnostics-toolkit.shizule.json"
-    },
     {
       "id": "com.shizulu.sample.animation_tuner",
       "name": "Animation Tuner",
@@ -34,76 +24,6 @@
       "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/display-comfort-pack.shizule.json"
     },
     {
-      "id": "com.shizulu.store.battery_sanity_tools",
-      "name": "Battery Sanity Tools",
-      "version": "1.0.0",
-      "description": "Battery saver toggles and battery status checks using Android shell commands.",
-      "author": "Shizulu",
-      "risk": "Low",
-      "tags": ["battery", "power"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/battery-sanity-tools.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.notification_quiet_kit",
-      "name": "Notification Quiet Kit",
-      "version": "1.0.0",
-      "description": "Toggles notification dots and heads-up notification settings where supported.",
-      "author": "Shizulu",
-      "risk": "Low",
-      "tags": ["notifications", "settings"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/notification-quiet-kit.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.private_dns_switchboard",
-      "name": "Private DNS Switchboard",
-      "version": "1.0.0",
-      "description": "Switches Android Private DNS between automatic, off, Cloudflare, Google, and Quad9 presets.",
-      "author": "Shizulu",
-      "risk": "Medium",
-      "tags": ["network", "dns"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/private-dns-switchboard.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.app_standby_manager",
-      "name": "App Standby Manager",
-      "version": "1.0.0",
-      "description": "Moves a selected app between Android standby buckets to tune background behavior.",
-      "author": "Shizulu",
-      "risk": "Medium",
-      "tags": ["apps", "battery"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/app-standby-manager.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.appops_privacy_kit",
-      "name": "AppOps Privacy Kit",
-      "version": "1.0.0",
-      "description": "Inspects and adjusts selected app AppOps for background activity, wake locks, and notifications.",
-      "author": "Shizulu",
-      "risk": "Medium",
-      "tags": ["appops", "privacy"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/appops-privacy-kit.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.permission_grant_helper",
-      "name": "Permission Grant Helper",
-      "version": "1.0.0",
-      "description": "Attempts useful ADB-grantable permissions for a selected app when the app declares them.",
-      "author": "Shizulu",
-      "risk": "Medium",
-      "tags": ["permissions", "apps"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/permission-grant-helper.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.overlay_inspector",
-      "name": "Overlay Inspector",
-      "version": "1.0.0",
-      "description": "Lists runtime resource overlays and can enable or disable a typed overlay package/id.",
-      "author": "Shizulu",
-      "risk": "Medium",
-      "tags": ["rro", "overlays"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/overlay-inspector.shizule.json"
-    },
-    {
       "id": "com.shizulu.sample.light_debloat_manager",
       "name": "Light Debloat Manager",
       "version": "1.0.0",
@@ -122,46 +42,6 @@
       "risk": "Medium",
       "tags": ["permissions", "appops"],
       "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/shizulu-capability-booster.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.background_lockdown",
-      "name": "Background Lockdown",
-      "version": "1.0.0",
-      "description": "Aggressively restricts a selected app's background behavior through AppOps and standby controls.",
-      "author": "Shizulu",
-      "risk": "High",
-      "tags": ["appops", "battery", "apps"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/background-lockdown.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.package_disabler",
-      "name": "Package Disabler",
-      "version": "1.0.0",
-      "description": "Disables or re-enables a selected package for user 0. Can break apps or parts of the system UI.",
-      "author": "Shizulu",
-      "risk": "High",
-      "tags": ["packages", "debloat"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/package-disabler.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.app_data_reset_toolkit",
-      "name": "App Data Reset Toolkit",
-      "version": "1.0.0",
-      "description": "Force-stops or clears all data for a selected app. Clear Data is destructive and cannot be undone.",
-      "author": "Shizulu",
-      "risk": "High",
-      "tags": ["apps", "data"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/app-data-reset-toolkit.shizule.json"
-    },
-    {
-      "id": "com.shizulu.store.display_density_lab",
-      "name": "Display Density Lab",
-      "version": "1.0.0",
-      "description": "Changes Android display density presets with a reset action. Bad values can make the UI hard to use.",
-      "author": "Shizulu",
-      "risk": "High",
-      "tags": ["display", "wm"],
-      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/display-density-lab.shizule.json"
     }
   ]
 }
