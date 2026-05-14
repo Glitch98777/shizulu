@@ -663,6 +663,10 @@ class MainActivity : Activity() {
                 },
                 spacedParams(top = 10)
             )
+            addView(
+                compactButton("Detect Root Requests", filled = false) { detectRootRequests() },
+                spacedParams(top = 10)
+            )
         }
     }
 
@@ -1345,6 +1349,60 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun detectRootRequests() {
+        settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, true).apply()
+        appendLog("Root request detection scan started")
+        runPowerCommand(
+            "Root Request Detection",
+            rootRequestDetectionCommand(),
+            "com.shizulu.root_request_detector"
+        ) { output ->
+            handleRootRequestDetectionOutput(output)
+        }
+    }
+
+    private fun handleRootRequestDetectionOutput(raw: String): String {
+        val packages = raw.lineSequence()
+            .mapNotNull { line ->
+                when {
+                    line.startsWith("SHIZULU_ROOT_SIGNAL_PACKAGE=") -> line.substringAfter("=")
+                    line.startsWith("SHIZULU_ROOT_SIGNAL_FOREGROUND=") -> line.substringAfter("=")
+                    else -> null
+                }?.trim()
+            }
+            .filter { it.matches(PACKAGE_NAME_PATTERN) && it != packageName }
+            .distinct()
+            .toList()
+
+        if (packages.isNotEmpty()) {
+            val existing = settingsPrefs
+                .getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet())
+                .orEmpty()
+            val updated = existing.toMutableSet().apply { addAll(packages) }
+            settingsPrefs.edit()
+                .putBoolean(KEY_SU_BRIDGE_ENABLED, true)
+                .putStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, updated)
+                .apply()
+            appendLog("Root request detection pre-granted: ${packages.joinToString(", ")}")
+        } else {
+            appendLog("Root request detection found no package candidates")
+        }
+
+        return buildString {
+            append("Best-effort root request scan complete.\n\n")
+            if (packages.isEmpty()) {
+                append("No package candidates were visible in logcat/window/process signals.\n")
+                append("Some apps call /system/bin/su privately, and Android does not expose that failed exec to another normal APK.\n")
+            } else {
+                append("Pre-granted Shizulu fake-root routing for:\n")
+                packages.forEach { append("- ").append(it).append('\n') }
+                append("\nIf one of these apps retries through Shizulu's provider/interceptor/custom su path, Shizulu will answer as already approved and route compatible commands through ADB/Shizuku.\n")
+            }
+            append("\nRaw scan:\n")
+            append(raw.ifBlank { "No output." })
+        }
+    }
+
     private fun runSuBridgeSelfTest() {
         if (!settingsPrefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)) {
             showOutput("SU Bridge Self-Test", "Enable the SU Bridge endpoint first.")
@@ -1538,7 +1596,12 @@ class MainActivity : Activity() {
         return null
     }
 
-    private fun runPowerCommand(title: String, command: String, moduleId: String) {
+    private fun runPowerCommand(
+        title: String,
+        command: String,
+        moduleId: String,
+        transformOutput: ((String) -> String)? = null
+    ) {
         if (dryRunEnabled) {
             appendLog("Dry run power command: $title")
             showOutput(title, "Dry run: no command executed.\n\n$ $command")
@@ -1558,7 +1621,8 @@ class MainActivity : Activity() {
                 runCatching { WirelessAdbRunner(applicationContext).runCommand(moduleId, command, pairingCode, port) }
                     .onSuccess { result ->
                         appendLog("Power command finished: $title")
-                        mainHandler.post { showOutput(title, result.output) }
+                        val output = transformOutput?.invoke(result.output) ?: result.output
+                        mainHandler.post { showOutput(title, output) }
                     }
                     .onFailure {
                         val message = it.message ?: it.javaClass.simpleName
@@ -1586,7 +1650,8 @@ class MainActivity : Activity() {
             runCatching { currentService.runShizuleCommand(moduleId, command) }
                 .onSuccess { result ->
                     appendLog("Power command finished: $title")
-                    mainHandler.post { showOutput(title, result) }
+                    val output = transformOutput?.invoke(result) ?: result
+                    mainHandler.post { showOutput(title, output) }
                 }
                 .onFailure {
                     val message = it.message ?: it.javaClass.simpleName
@@ -2224,6 +2289,40 @@ class MainActivity : Activity() {
             run cmd appops get "${'$'}pkg"
             run dumpsys package "${'$'}pkg"
             echo "Elevation attempt complete. Commands that show non-zero exit were blocked by this Android build, but every shell-accessible elevation was attempted."
+        """.trimIndent()
+    }
+
+    private fun rootRequestDetectionCommand(): String {
+        return """
+            echo "Shizulu root request detection"
+            echo "This scan can only see visible logcat/window/process signals."
+            echo
+            tmp=/data/local/tmp/shizulu-root-detect.log
+            : > "${'$'}tmp"
+            echo "[foreground]"
+            dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 5 | tee -a "${'$'}tmp"
+            dumpsys activity activities 2>/dev/null | grep -E 'topResumedActivity|mResumedActivity|ResumedActivity' | tail -n 5 | tee -a "${'$'}tmp"
+            echo
+            echo "[root-ish logcat]"
+            logcat -d -v brief -t 800 2>/dev/null | grep -Ei '(^|[^a-z])(su|libsu|root|magisk|kernelsu|ksu|superuser|permission denied|not rooted|root denied)([^a-z]|${'$'})' | tail -n 80 | tee -a "${'$'}tmp"
+            echo
+            echo "[active su processes]"
+            ps -A 2>/dev/null | grep -Ei '(^|/)(su|magisk|ksud|superuser)( |${'$'})' | tee -a "${'$'}tmp" || true
+            echo
+            echo "[candidate packages]"
+            for pkg in $(pm list packages -3 2>/dev/null | sed 's/^package://'); do
+              if grep -Fq "${'$'}pkg" "${'$'}tmp"; then
+                echo "SHIZULU_ROOT_SIGNAL_PACKAGE=${'$'}pkg"
+              fi
+            done
+            focused="$(grep -Eo '([A-Za-z][A-Za-z0-9_]*\.)+[A-Za-z0-9_]+' "${'$'}tmp" | grep -v '^android\.' | grep -v '^com.android.systemui' | head -n 1)"
+            if [ -n "${'$'}focused" ]; then
+              echo "SHIZULU_ROOT_SIGNAL_FOREGROUND=${'$'}focused"
+            fi
+            echo
+            echo "Detection notes:"
+            echo "- Hardcoded /system/bin/su calls cannot be answered after they already failed."
+            echo "- Detected packages are pre-approved only for future Shizulu bridge/interceptor/custom su path retries."
         """.trimIndent()
     }
 
