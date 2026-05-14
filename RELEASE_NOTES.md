@@ -21,6 +21,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - SU Bridge now has a real opt-in provider endpoint, self-test, and su-c command runner for apps/modules that intentionally integrate with Shizulu.
 - SU Bridge can now run Max ADB Elevation to grant Shizulu all shell-accessible permissions, appops, and battery whitelist allowances.
 - SU Bridge popup uses OK, and the bridge script now installs a /data/local/tmp/su compatibility shim for apps that support custom su paths.
+- SU Bridge now accepts standard su call shapes like `su -c`, `su 0 -c`, `su --command`, compact `-ccommand`, and stdin through the provider or custom `/data/local/tmp/su` path.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

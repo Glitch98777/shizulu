@@ -1287,7 +1287,7 @@ class MainActivity : Activity() {
             .onSuccess { status ->
                 showOutput(
                     "SU Bridge Status",
-                    "$status\nProvider: content://$packageName.su\nPermission: com.shizulu.manager.permission.SU_BRIDGE"
+                    "$status\nProvider: content://$packageName.su\nAccess: endpoint is open only when SU Bridge is enabled"
                 )
             }
             .onFailure {
@@ -1302,12 +1302,13 @@ class MainActivity : Activity() {
             Authority:
             content://$packageName.su
 
-            Permission apps must request:
-            com.shizulu.manager.permission.SU_BRIDGE
+            Access:
+            Enable SU Bridge first. The endpoint is disabled by default.
 
             Provider calls:
             call("status", null, null)
             call("exec", null, Bundle().apply { putString("command", "id") })
+            call("su", "su 0 -c id", null)
             call("su-c", "su -c id", null)
 
             Compatibility shim:
@@ -1924,7 +1925,7 @@ class MainActivity : Activity() {
                     maxAdbElevationCommand()
                 ),
                 "Remove Bridge Script" to listOf(
-                    "rm -f /data/local/tmp/shizulu-su; echo removed /data/local/tmp/shizulu-su"
+                    "rm -f /data/local/tmp/shizulu-su /data/local/tmp/su; echo removed Shizulu SU Bridge scripts"
                 )
             )
         )
@@ -1935,25 +1936,60 @@ class MainActivity : Activity() {
             "cat > /data/local/tmp/shizulu-su <<'EOF'",
             "#!/system/bin/sh",
             "uri='content://com.shizulu.manager.su'",
-            "if [ \"\$1\" = \"-v\" ] || [ \"\$1\" = \"--version\" ]; then",
-            "  echo 'Shizulu SU Bridge shim 1.1'",
-            "  exit 0",
-            "fi",
-            "if [ \"\$1\" = \"-h\" ] || [ \"\$1\" = \"--help\" ]; then",
-            "  echo 'usage: su [-c command]'",
-            "  exit 0",
-            "fi",
-            "if [ \"\$1\" = \"-c\" ] || [ \"\$1\" = \"--command\" ]; then",
-            "  shift",
-            "  command=\"\$*\"",
-            "else",
-            "  command=\"\$*\"",
+            "version='Shizulu SU Bridge shim 1.2'",
+            "command=''",
+            "while [ \"\$#\" -gt 0 ]; do",
+            "  case \"\$1\" in",
+            "    -v|--version)",
+            "      echo \"\$version\"",
+            "      exit 0",
+            "      ;;",
+            "    -V)",
+            "      echo 1",
+            "      exit 0",
+            "      ;;",
+            "    -h|--help)",
+            "      echo 'usage: su [options] [-c command]'",
+            "      exit 0",
+            "      ;;",
+            "    -c|--command)",
+            "      shift",
+            "      command=\"\$*\"",
+            "      break",
+            "      ;;",
+            "    -c*)",
+            "      command=\"\${1#-c}\"",
+            "      shift",
+            "      if [ \"\$#\" -gt 0 ]; then command=\"\$command \$*\"; fi",
+            "      break",
+            "      ;;",
+            "    -s|--shell|-Z|--context)",
+            "      shift",
+            "      if [ \"\$#\" -gt 0 ]; then shift; fi",
+            "      ;;",
+            "    -p|-l|-m|-mm|-M|--mount-master|--preserve-environment)",
+            "      shift",
+            "      ;;",
+            "    0|root|shell)",
+            "      shift",
+            "      ;;",
+            "    *)",
+            "      command=\"\$*\"",
+            "      break",
+            "      ;;",
+            "  esac",
+            "done",
+            "if [ -z \"\$command\" ] && [ ! -t 0 ]; then",
+            "  command=\"\$(cat)\"",
             "fi",
             "if [ -z \"\$command\" ]; then",
             "  echo 'Shizulu SU Bridge: interactive shells cannot be proxied without root.'",
             "  exit 1",
             "fi",
-            "exec /system/bin/cmd content call --uri \"\$uri\" --method su-c --arg \"su -c \$command\"",
+            "result=\"\$(/system/bin/cmd content call --uri \"\$uri\" --method su --arg \"su -c \$command\" 2>&1)\"",
+            "echo \"\$result\"",
+            "echo \"\$result\" | grep -q 'success=false' && exit 1",
+            "exit 0",
             "EOF",
             "cp /data/local/tmp/shizulu-su /data/local/tmp/su",
             "chmod 755 /data/local/tmp/shizulu-su /data/local/tmp/su",

@@ -43,8 +43,10 @@ class MainActivity : Activity() {
                 addView(button("Request Bridge Permission") { requestBridgePermission() }, spaced(top = 16))
                 addView(button("Bridge Status") { callBridge("status", null, null) }, spaced())
                 addView(button("Bridge exec: id") { callBridge("exec", null, mapOf("command" to "id; echo bridge_exec=ok")) }, spaced())
+                addView(button("Bridge su 0 -c id") { callBridge("su", "su 0 -c 'id; echo bridge_su_standard=ok'", null) }, spaced())
                 addView(button("Bridge su -c id") { callBridge("su-c", "su -c 'id; echo bridge_su_c=ok'", null) }, spaced())
                 addView(button("Custom path /data/local/tmp/su") { runCustomPathSu() }, spaced())
+                addView(button("Custom path su 0 -c") { runCustomPathSuUserZero() }, spaced())
                 addView(button("Traditional su -c id") { runTraditionalSu() }, spaced())
                 addView(output, spaced(top = 16))
             })
@@ -119,6 +121,22 @@ class MainActivity : Activity() {
                 "/data/local/tmp/su exit=$code\n$text"
             }.getOrElse {
                 "/data/local/tmp/su failed: ${it.javaClass.simpleName}: ${it.message}\nInstall the Shizulu SU Bridge script first."
+            }
+            runOnUiThread { write(result) }
+        }
+    }
+
+    private fun runCustomPathSuUserZero() {
+        executor.execute {
+            val result = runCatching {
+                val process = ProcessBuilder("/data/local/tmp/su", "0", "-c", "id; echo custom_path_su_0=ok")
+                    .redirectErrorStream(true)
+                    .start()
+                val text = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
+                val code = process.waitFor()
+                "/data/local/tmp/su 0 -c exit=$code\n$text"
+            }.getOrElse {
+                "/data/local/tmp/su 0 -c failed: ${it.javaClass.simpleName}: ${it.message}\nInstall the Shizulu SU Bridge script first."
             }
             runOnUiThread { write(result) }
         }

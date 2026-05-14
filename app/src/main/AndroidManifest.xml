@@ -51,8 +51,7 @@
             android:name=".SuBridgeProvider"
             android:authorities="${applicationId}.su"
             android:enabled="true"
-            android:exported="true"
-            android:permission="com.shizulu.manager.permission.SU_BRIDGE" />
+            android:exported="true" />
 
         <activity
             android:name=".MainActivity"

@@ -27,11 +27,12 @@ class SuBridgeProvider : ContentProvider() {
                         onFailure = { bridgeBundle(false, it.message ?: it.javaClass.simpleName, "") }
                     )
             }
-            METHOD_SU_C -> {
+            METHOD_SU, METHOD_SU_C -> {
                 if (!enabled) return bridgeBundle(false, "SU Bridge endpoint is disabled in Shizulu.", "")
                 val raw = extras?.getString(EXTRA_COMMAND) ?: arg.orEmpty()
-                val command = parseSuCommand(raw)
-                    ?: return bridgeBundle(false, "Use su -c <command>.", "")
+                val stdin = extras?.getString(EXTRA_STDIN).orEmpty()
+                val command = parseSuCommand(raw, stdin)
+                    ?: return bridgeBundle(false, "Use su -c <command>, su 0 -c <command>, or pass stdin.", "")
                 val moduleId = extras?.getString(EXTRA_MODULE_ID).orEmpty().ifBlank { DEFAULT_MODULE_ID }
                 runCatching { executor.execute(moduleId, command) }
                     .fold(
@@ -57,17 +58,75 @@ class SuBridgeProvider : ContentProvider() {
         }
     }
 
-    private fun parseSuCommand(raw: String): String? {
+    private fun parseSuCommand(raw: String, stdin: String = ""): String? {
         val trimmed = raw.trim()
-        if (!trimmed.startsWith("su")) return null
-        val afterSu = trimmed.removePrefix("su").trimStart()
-        val command = when {
-            afterSu.startsWith("-c ") -> afterSu.removePrefix("-c")
-            afterSu == "-c" -> ""
-            afterSu.startsWith("--command ") -> afterSu.removePrefix("--command")
+        val afterSu = when {
+            trimmed == "su" -> ""
+            trimmed.startsWith("su ") -> trimmed.removePrefix("su").trimStart()
             else -> return null
         }
-        return command.trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
+        if (afterSu.isBlank()) return stdin.trim().takeIf { it.isNotBlank() }
+
+        findCommandAfterSwitch(afterSu, "-c")?.let { return it.trim().trimMatchingQuotes().takeIf(String::isNotBlank) }
+        findCommandAfterSwitch(afterSu, "--command")?.let { return it.trim().trimMatchingQuotes().takeIf(String::isNotBlank) }
+
+        val tokens = afterSu.shellSplit()
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            when {
+                token == "-c" || token == "--command" -> {
+                    return tokens.drop(index + 1).joinToString(" ").trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
+                }
+                token.startsWith("-c") && token.length > 2 -> {
+                    return (token.removePrefix("-c") + " " + tokens.drop(index + 1).joinToString(" "))
+                        .trim()
+                        .trimMatchingQuotes()
+                        .takeIf { it.isNotBlank() }
+                }
+                token == "-s" || token == "--shell" || token == "-Z" || token == "--context" -> index += 2
+                token in IGNORED_SU_FLAGS || token.startsWith("-") -> index++
+                token == "root" || token == "shell" || token.all { it.isDigit() } -> index++
+                else -> return tokens.drop(index).joinToString(" ").trim().trimMatchingQuotes().takeIf { it.isNotBlank() }
+            }
+        }
+        return stdin.trim().takeIf { it.isNotBlank() }
+    }
+
+    private fun findCommandAfterSwitch(value: String, switch: String): String? {
+        val marker = "$switch "
+        val index = value.indexOf(marker)
+        if (index < 0) return null
+        return value.substring(index + marker.length)
+    }
+
+    private fun String.shellSplit(): List<String> {
+        val result = mutableListOf<String>()
+        val current = StringBuilder()
+        var quote: Char? = null
+        var escaped = false
+        forEach { char ->
+            when {
+                escaped -> {
+                    current.append(char)
+                    escaped = false
+                }
+                char == '\\' -> escaped = true
+                quote != null && char == quote -> quote = null
+                quote != null -> current.append(char)
+                char == '\'' || char == '"' -> quote = char
+                char.isWhitespace() -> {
+                    if (current.isNotEmpty()) {
+                        result += current.toString()
+                        current.clear()
+                    }
+                }
+                else -> current.append(char)
+            }
+        }
+        if (escaped) current.append('\\')
+        if (current.isNotEmpty()) result += current.toString()
+        return result
     }
 
     private fun String.trimMatchingQuotes(): String {
@@ -80,10 +139,13 @@ class SuBridgeProvider : ContentProvider() {
     companion object {
         const val METHOD_STATUS = "status"
         const val METHOD_EXEC = "exec"
+        const val METHOD_SU = "su"
         const val METHOD_SU_C = "su-c"
         const val EXTRA_COMMAND = "command"
+        const val EXTRA_STDIN = "stdin"
         const val EXTRA_MODULE_ID = "moduleId"
         private const val DEFAULT_MODULE_ID = "com.shizulu.external.su"
         private const val PREFS = "shizulu_settings"
+        private val IGNORED_SU_FLAGS = setOf("-p", "-l", "-m", "-mm", "-M", "--mount-master", "--preserve-environment")
     }
 }
