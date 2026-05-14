@@ -1235,19 +1235,31 @@ class MainActivity : Activity() {
 
     private fun showSuBridgeMenu() {
         val enabled = settingsPrefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)
+        val items = arrayOf(
+            if (enabled) "Disable bridge endpoint" else "Enable bridge endpoint",
+            "Max ADB Elevation",
+            "Run su -c command",
+            "Self-test",
+            "ColorBlendr compatibility",
+            "Install bridge shizule",
+            "Install /data/local/tmp bridge script",
+            "Bridge status",
+            "Bridge API sample"
+        )
         android.app.AlertDialog.Builder(this)
             .setTitle("SU Bridge")
             .setMessage("Shizulu now exposes a real opt-in bridge endpoint at content://$packageName.su for apps/modules that integrate with it. Normal APKs still cannot replace Android's system su path without root/system access.")
-            .setItems(arrayOf(if (enabled) "Disable bridge endpoint" else "Enable bridge endpoint", "Max ADB Elevation", "Run su -c command", "Self-test", "Install bridge shizule", "Install /data/local/tmp bridge script", "Bridge status", "Bridge API sample")) { _, which ->
+            .setItems(items) { _, which ->
                 when (which) {
                     0 -> setSuBridgeEndpointEnabled(!enabled)
                     1 -> runSuBridgeElevation()
                     2 -> showSuBridgeCommandDialog()
                     3 -> runSuBridgeSelfTest()
-                    4 -> installSuBridgeShizule()
-                    5 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    6 -> showSuBridgeStatus()
-                    7 -> showSuBridgeApiSample()
+                    4 -> showColorBlendrCompatibility()
+                    5 -> installSuBridgeShizule()
+                    6 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    7 -> showSuBridgeStatus()
+                    8 -> showSuBridgeApiSample()
                 }
             }
             .setNegativeButton("OK", null)
@@ -1342,6 +1354,39 @@ class MainActivity : Activity() {
                     mainHandler.post { showOutput("SU Bridge Self-Test", "Failed: $message") }
                 }
         }
+    }
+
+    private fun showColorBlendrCompatibility() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("ColorBlendr Compatibility")
+            .setMessage("ColorBlendr root mode uses libsu, so Android will not let Shizulu intercept that root request from another normal app. This helper pushes ColorBlendr onto its rootless Shizuku-compatible route and enables the ADB-level theming flags it exposes.")
+            .setItems(arrayOf("Run compatibility setup", "Show technical reason")) { _, which ->
+                when (which) {
+                    0 -> runPowerCommand(
+                        "ColorBlendr Compatibility",
+                        colorBlendrCompatibilityCommand(),
+                        "com.shizulu.colorblendr_bridge"
+                    )
+                    1 -> showOutput(
+                        "ColorBlendr Root Path",
+                        """
+                        ColorBlendr root mode calls topjohnwu libsu:
+                        - Shell.isAppGrantedRoot()
+                        - Shell.cmd(...).exec()
+                        - RootService.bind(...)
+
+                        Those calls resolve through the device su binary and Magisk/KernelSU-style root service. A normal APK cannot replace /system/bin/su, modify ColorBlendr's process PATH, or answer libsu's root grant request for another app.
+
+                        What Shizulu can do:
+                        - Run the same ADB/shell-level commands through Shizulu.
+                        - Install /data/local/tmp/su for apps that support a custom su path.
+                        - Configure ColorBlendr's exported preferences into Shizuku/rootless mode so it uses the non-root path instead of asking libsu.
+                        """.trimIndent()
+                    )
+                }
+            }
+            .setNegativeButton("OK", null)
+            .show()
     }
 
     private fun installSuBridgeShizule() {
@@ -1997,6 +2042,46 @@ class MainActivity : Activity() {
             "echo installed /data/local/tmp/su",
             "echo compatible apps can use /data/local/tmp/su as their custom su path"
         ).joinToString("\n")
+    }
+
+    private fun colorBlendrCompatibilityCommand(): String {
+        return """
+            pkg=com.drdisagree.colorblendr
+            prefs=content://${'$'}pkg/${'$'}{pkg}_preferences
+            echo "Shizulu ColorBlendr compatibility setup"
+            echo "package=${'$'}pkg"
+            echo
+            if ! pm path "${'$'}pkg" >/dev/null 2>&1; then
+              echo "ColorBlendr is not installed."
+              exit 1
+            fi
+            echo "ColorBlendr is installed."
+            echo
+            echo "Important: ColorBlendr root mode uses libsu. Shizulu cannot intercept that root request from outside the app."
+            echo "Switching ColorBlendr to its Shizuku/rootless preference path and enabling theming flags."
+            echo
+            put_string() {
+              echo "$ content insert ${'$'}prefs/${'$'}1 = ${'$'}2"
+              cmd content insert --uri "${'$'}prefs/${'$'}1" --bind type:i:1 --bind value:s:"${'$'}2" 2>&1
+              echo
+            }
+            put_bool() {
+              echo "$ content insert ${'$'}prefs/${'$'}1 = ${'$'}2"
+              cmd content insert --uri "${'$'}prefs/${'$'}1" --bind type:i:6 --bind value:b:"${'$'}2" 2>&1
+              echo
+            }
+            put_string workingMethod SHIZUKU
+            put_bool shizukuThemingEnabled true
+            put_bool themingEnabled true
+            put_bool wirelessAdbThemingEnabled false
+            echo "Current system Material You setting:"
+            settings get secure theme_customization_overlay_packages 2>&1
+            echo
+            echo "Restarting ColorBlendr so it reloads preferences."
+            am force-stop "${'$'}pkg" 2>&1
+            monkey -p "${'$'}pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+            echo "Done. In ColorBlendr, choose Shizuku/rootless mode. Root-only ColorBlendr features still require real root because they are gated by ColorBlendr's own isRootMode/libsu checks."
+        """.trimIndent()
     }
 
     private fun maxAdbElevationCommand(): String {
