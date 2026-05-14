@@ -17,4 +17,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Shizulu"
 include(":app")
-include(":su-bridge-tester")

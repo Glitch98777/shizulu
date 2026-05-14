@@ -17,17 +17,9 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Persistent ADB tools for foreground keep-alive and battery optimization exemption.
 - Shizule Lab in Tools can install safe built-in test shizules and open a JSON Module Maker editor.
 - Dry Run now previews profile actions in one clean report, refreshes its button state reliably, and shows backend/environment details.
-- Rootless Power Tools add a shell-level SU Bridge, RRO overlay controls, Advanced AppOps, package manipulation, and a faster boot reconnect loop.
-- SU Bridge now has a real opt-in provider endpoint, self-test, and su-c command runner for apps/modules that intentionally integrate with Shizulu.
-- SU Bridge can now run Max ADB Elevation to grant Shizulu all shell-accessible permissions, appops, and battery whitelist allowances.
-- SU Bridge popup uses OK, and the bridge script now installs a /data/local/tmp/su compatibility shim for apps that support custom su paths.
-- SU Bridge now accepts standard su call shapes like `su -c`, `su 0 -c`, `su --command`, compact `-ccommand`, and stdin through the provider or custom `/data/local/tmp/su` path.
-- SU Bridge tools now include a ColorBlendr compatibility helper that detects ColorBlendr, explains why libsu root mode cannot be intercepted by a normal APK, and pushes ColorBlendr onto its Shizuku/rootless preference path through privileged ADB.
-- SU Bridge can now install Shizuku+-style shell interceptors under `/data/local/tmp/shizulu-bin` for `su`, `pm`, `am`, `settings`, `cmd`, and `appops`, plus a `shizulu-shell` PATH launcher for compatible tools.
-- SU Bridge can now install a fake system su layout under `/data/local/tmp/shizulu-fake-system/system/bin/su` and `/system/xbin/su` with a `shizulu-system-shell` launcher for compatible tools that search `PATH`.
-- Rootless Power Tools now has a direct Install Shell Interceptors button on the card.
-- SU Bridge now requires manual Spoof Root Apps grants before compatible app root-style requests are answered and routed through ADB/Shizuku.
-- Rootless Power Tools now replaces automatic root-request detection with a manual Spoof Root Apps manager where you can search installed apps, grant or revoke spoof root, and let approved compatible requests run through privileged ADB/Shizuku.
+- Rootless Power Tools now focus on real ADB/Shizuku capabilities: Shizulu elevation, RRO overlay controls, Advanced AppOps, package manipulation, and a faster boot reconnect loop.
+- Removed the experimental fake/spoof-root tools, SU bridge endpoint, shell interceptors, fake system `su`, and spoof-root app grants.
+- Shizulu elevation output is now trimmed and avoids huge package dumps so the app stays stable after running elevated privilege setup.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

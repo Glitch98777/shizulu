@@ -22,9 +22,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
-import android.text.Editable
 import android.text.InputType
-import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.Window
@@ -639,7 +637,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Shell-level SU compatibility, RRO overlays, AppOps, and package commands through the selected backend. This does not grant arbitrary apps true system root."
+                text = "Real shell-level tools through the selected backend: Shizulu elevation, RRO overlays, AppOps, and package commands."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -647,7 +645,7 @@ class MainActivity : Activity() {
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(compactButton("SU Bridge", filled = true) { showSuBridgeMenu() }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("Elevate Shizulu", filled = true) { runShizuluElevation() }, LinearLayout.LayoutParams(0, dp(42), 1f))
                 addView(compactButton("RRO", filled = false) { showRroMenu() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
                     leftMargin = dp(10)
                 })
@@ -659,22 +657,6 @@ class MainActivity : Activity() {
                     leftMargin = dp(10)
                 })
             }, spacedParams(top = 10))
-            addView(
-                compactButton("Install Shell Interceptors", filled = true) {
-                    runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
-                },
-                spacedParams(top = 10)
-            )
-            addView(
-                compactButton("Fake /system/bin/su", filled = false) {
-                    runPowerCommand("Install Fake /system/bin/su", fakeSystemSuInstallCommand(), "com.shizulu.fake_system_su")
-                },
-                spacedParams(top = 10)
-            )
-            addView(
-                compactButton("Spoof Root Apps", filled = false) { showSpoofRootAppsManager() },
-                spacedParams(top = 10)
-            )
         }
     }
 
@@ -1251,319 +1233,9 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun showSuBridgeMenu() {
-        val enabled = settingsPrefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)
-        val items = arrayOf(
-            if (enabled) "Disable bridge endpoint" else "Enable bridge endpoint",
-            "Max ADB Elevation",
-            "Run su -c command",
-            "Self-test",
-            "Spoof root app grants",
-            "ColorBlendr compatibility",
-            "Install shell interceptors",
-            "Install fake /system/bin/su",
-            "Install bridge shizule",
-            "Install /data/local/tmp bridge script",
-            "Bridge status",
-            "Bridge API sample"
-        )
-        android.app.AlertDialog.Builder(this)
-            .setTitle("SU Bridge")
-            .setMessage("Shizulu now exposes a real opt-in bridge endpoint at content://$packageName.su for apps/modules that integrate with it. Normal APKs still cannot replace Android's system su path without root/system access.")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> setSuBridgeEndpointEnabled(!enabled)
-                    1 -> runSuBridgeElevation()
-                    2 -> showSuBridgeCommandDialog()
-                    3 -> runSuBridgeSelfTest()
-                    4 -> showSpoofRootAppsManager()
-                    5 -> showColorBlendrCompatibility()
-                    6 -> runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
-                    7 -> runPowerCommand("Install Fake /system/bin/su", fakeSystemSuInstallCommand(), "com.shizulu.fake_system_su")
-                    8 -> installSuBridgeShizule()
-                    9 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    10 -> showSuBridgeStatus()
-                    11 -> showSuBridgeApiSample()
-                }
-            }
-            .setNegativeButton("OK", null)
-            .show()
-    }
-
-    private fun setSuBridgeEndpointEnabled(enabled: Boolean) {
-        settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, enabled).apply()
-        appendLog("SU Bridge endpoint ${if (enabled) "enabled" else "disabled"}")
-        Toast.makeText(this, if (enabled) "SU Bridge endpoint enabled" else "SU Bridge endpoint disabled", Toast.LENGTH_SHORT).show()
-        if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
-    }
-
-    private fun runSuBridgeElevation() {
-        settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, true).apply()
-        appendLog("SU Bridge max ADB elevation requested")
-        runPowerCommand("Max ADB Elevation", maxAdbElevationCommand(), "com.shizulu.su_bridge")
-    }
-
-    private fun showSuBridgeCommandDialog() {
-        promptForLines(
-            title = "Run SU Command",
-            message = "Enter a command. Shizulu will run it like su -c through the selected backend.",
-            initial = "id"
-        ) { lines ->
-            val command = lines.joinToString("\n").trim()
-            if (command.isBlank()) {
-                Toast.makeText(this, "Command is required.", Toast.LENGTH_SHORT).show()
-            } else {
-                runPowerCommand("SU Bridge", command, "com.shizulu.su_bridge")
-            }
-        }
-    }
-
-    private fun showSuBridgeStatus() {
-        runCatching { SuBridgeExecutor(this).status() }
-            .onSuccess { status ->
-                showOutput(
-                    "SU Bridge Status",
-                    "$status\nProvider: content://$packageName.su\nAccess: endpoint is open only when SU Bridge is enabled"
-                )
-            }
-            .onFailure {
-                showOutput("SU Bridge Status", it.message ?: it.javaClass.simpleName)
-            }
-    }
-
-    private fun showSuBridgeApiSample() {
-        showOutput(
-            "SU Bridge API",
-            """
-            Authority:
-            content://$packageName.su
-
-            Access:
-            Enable SU Bridge first. The endpoint is disabled by default.
-
-            Provider calls:
-            call("status", null, null)
-            call("exec", null, Bundle().apply { putString("command", "id") })
-            call("su", "su 0 -c id", null)
-            call("su-c", "su -c id", null)
-
-            Compatibility shim:
-            Run "Install /data/local/tmp bridge script", then point compatible apps to:
-            /data/local/tmp/su
-
-            Fake system su:
-            Run "Install fake /system/bin/su", then launch compatible tools through:
-            /data/local/tmp/shizulu-fake-system/shizulu-system-shell
-
-            Hardcoded /system/bin/su calls cannot be intercepted without root/system access.
-
-            Returned Bundle:
-            success: Boolean
-            message: String
-            output: String
-            """.trimIndent()
-        )
-    }
-
-    private fun showSpoofRootAppsManager() {
-        settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, true).apply()
-        val apps = loadInstalledAppGrantCandidates()
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val summary = TextView(this).apply {
-            textSize = 13f
-            setTextColor(COLORS.muted)
-            setPadding(0, 0, 0, dp(8))
-        }
-        val search = EditText(this).apply {
-            hint = "Search apps or package names"
-            textSize = 14f
-            setSingleLine(true)
-            setTextColor(COLORS.ink)
-            setHintTextColor(COLORS.muted)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
-        }
-        val scroll = ScrollView(this).apply {
-            addView(list)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(370)).apply {
-                topMargin = dp(10)
-            }
-        }
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(8), dp(20), 0)
-            addView(summary)
-            addView(search)
-            addView(scroll)
-        }
-
-        fun render(query: String) {
-            val allowed = settingsPrefs.getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
-            val normalized = query.trim().lowercase(Locale.US)
-            val filtered = apps.filter {
-                normalized.isBlank() ||
-                    it.label.lowercase(Locale.US).contains(normalized) ||
-                    it.packageName.lowercase(Locale.US).contains(normalized)
-            }
-            summary.text = "${allowed.size} spoof-root grants. Bridge: enabled. Apps must use Shizulu's provider, custom /data/local/tmp/su path, or shell interceptors for commands to run through ADB/Shizuku."
-            list.removeAllViews()
-            if (filtered.isEmpty()) {
-                list.addView(TextView(this).apply {
-                    text = "No apps found."
-                    textSize = 14f
-                    setTextColor(COLORS.muted)
-                    setPadding(0, dp(16), 0, dp(16))
-                })
-                return
-            }
-            filtered.take(MAX_SPOOF_ROOT_APP_ROWS).forEach { app ->
-                val granted = app.packageName in allowed
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(8), 0, dp(8))
-                }
-                val text = TextView(this).apply {
-                    text = buildString {
-                        append(app.label)
-                        if (app.system) append("  system")
-                        append('\n')
-                        append(app.packageName)
-                    }
-                    textSize = 13f
-                    setTextColor(COLORS.ink)
-                }
-                val button = compactButton(if (granted) "Revoke" else "Grant", filled = !granted) {
-                    setSpoofRootGrant(app.packageName, !granted)
-                    render(search.text.toString())
-                }
-                row.addView(text, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                row.addView(button, LinearLayout.LayoutParams(dp(92), dp(38)).apply { leftMargin = dp(10) })
-                list.addView(row)
-            }
-            if (filtered.size > MAX_SPOOF_ROOT_APP_ROWS) {
-                list.addView(TextView(this).apply {
-                    text = "Showing first $MAX_SPOOF_ROOT_APP_ROWS results. Search to narrow it down."
-                    textSize = 12f
-                    setTextColor(COLORS.muted)
-                    setPadding(0, dp(10), 0, 0)
-                })
-            }
-        }
-
-        search.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                render(s?.toString().orEmpty())
-            }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-        render("")
-
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Spoof Root Apps")
-            .setMessage("Manually grant apps Shizulu spoof root. Granted apps can receive an OK root-style response only through Shizulu-compatible routes; Android's hardcoded system su path still needs real root.")
-            .setView(root)
-            .setPositiveButton("Done", null)
-            .show()
-    }
-
-    private fun loadInstalledAppGrantCandidates(): List<AppGrantCandidate> {
-        return packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.packageName != packageName }
-            .map { info ->
-                AppGrantCandidate(
-                    label = packageManager.getApplicationLabel(info).toString().ifBlank { info.packageName },
-                    packageName = info.packageName,
-                    system = (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-                )
-            }
-            .sortedWith(compareBy<AppGrantCandidate> { it.system }.thenBy { it.label.lowercase(Locale.US) })
-    }
-
-    private fun setSpoofRootGrant(packageName: String, granted: Boolean) {
-        if (!packageName.matches(PACKAGE_NAME_PATTERN)) {
-            Toast.makeText(this, "Invalid package name.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val current = settingsPrefs.getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
-        val updated = current.toMutableSet().apply {
-            if (granted) add(packageName) else remove(packageName)
-        }
-        settingsPrefs.edit()
-            .putBoolean(KEY_SU_BRIDGE_ENABLED, true)
-            .putStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, updated)
-            .apply()
-        appendLog("Spoof root ${if (granted) "granted to" else "revoked from"} $packageName")
-        Toast.makeText(this, "Spoof root ${if (granted) "granted" else "revoked"}", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun runSuBridgeSelfTest() {
-        if (!settingsPrefs.getBoolean(KEY_SU_BRIDGE_ENABLED, false)) {
-            showOutput("SU Bridge Self-Test", "Enable the SU Bridge endpoint first.")
-            return
-        }
-        executor.execute {
-            runCatching { SuBridgeExecutor(applicationContext).execute("com.shizulu.su_bridge.selftest", "id; echo bridge=ok") }
-                .onSuccess { output ->
-                    appendLog("SU Bridge self-test succeeded")
-                    mainHandler.post { showOutput("SU Bridge Self-Test", output) }
-                }
-                .onFailure {
-                    val message = it.message ?: it.javaClass.simpleName
-                    appendLog("SU Bridge self-test failed: $message")
-                    mainHandler.post { showOutput("SU Bridge Self-Test", "Failed: $message") }
-                }
-        }
-    }
-
-    private fun showColorBlendrCompatibility() {
-        android.app.AlertDialog.Builder(this)
-            .setTitle("ColorBlendr Compatibility")
-            .setMessage("ColorBlendr root mode uses libsu, so Android will not let Shizulu intercept that root request from another normal app. This helper pushes ColorBlendr onto its rootless Shizuku-compatible route and enables the ADB-level theming flags it exposes.")
-            .setItems(arrayOf("Run compatibility setup", "Show technical reason")) { _, which ->
-                when (which) {
-                    0 -> runPowerCommand(
-                        "ColorBlendr Compatibility",
-                        colorBlendrCompatibilityCommand(),
-                        "com.shizulu.colorblendr_bridge"
-                    )
-                    1 -> showOutput(
-                        "ColorBlendr Root Path",
-                        """
-                        ColorBlendr root mode calls topjohnwu libsu:
-                        - Shell.isAppGrantedRoot()
-                        - Shell.cmd(...).exec()
-                        - RootService.bind(...)
-
-                        Those calls resolve through the device su binary and Magisk/KernelSU-style root service. A normal APK cannot replace /system/bin/su, modify ColorBlendr's process PATH, or answer libsu's root grant request for another app.
-
-                        What Shizulu can do:
-                        - Run the same ADB/shell-level commands through Shizulu.
-                        - Install /data/local/tmp/su for apps that support a custom su path.
-                        - Install /data/local/tmp/shizulu-bin wrappers for apps/tools that can run through a custom shell PATH.
-                        - Configure ColorBlendr's exported preferences into Shizuku/rootless mode so it uses the non-root path instead of asking libsu.
-                        """.trimIndent()
-                    )
-                }
-            }
-            .setNegativeButton("OK", null)
-            .show()
-    }
-
-    private fun installSuBridgeShizule() {
-        val raw = suBridgeShizuleJson()
-        runCatching { Shizule.fromJson(raw) }
-            .onSuccess { shizule ->
-                if (installTrusted(raw, shizule, refreshAfterInstall = true, showToast = true)) {
-                    appendLog("Installed SU Bridge shizule")
-                }
-            }
-            .onFailure {
-                val message = it.message ?: "Invalid SU Bridge shizule"
-                appendLog("SU Bridge shizule install failed: $message")
-                showOutput("SU Bridge", message)
-            }
+    private fun runShizuluElevation() {
+        appendLog("Shizulu elevation requested")
+        runPowerCommand("Elevate Shizulu", maxAdbElevationCommand(), "com.shizulu.elevation")
     }
 
     private fun showRroMenu() {
@@ -2121,341 +1793,6 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun suBridgeShizuleJson(): String {
-        return shizuleJson(
-            id = "com.shizulu.su_bridge",
-            name = "SU Bridge",
-            version = "1.0.0",
-            description = "Shell-level su compatibility helpers for Shizulu-aware apps and apps that support a custom su path.",
-            actions = listOf(
-                "Bridge Status" to listOf(
-                    "id; echo SHIZULU=\$SHIZULU; echo API=\$SHIZULU_API_VERSION; echo MODULE=\$SHIZULU_MODULE_ID",
-                    "if [ -x /data/local/tmp/su ]; then /data/local/tmp/su -c 'id; echo shim=ok'; else echo /data/local/tmp/su missing; fi"
-                ),
-                "Install Bridge Script" to listOf(
-                    suBridgeInstallCommand()
-                ),
-                "Install Fake System SU" to listOf(
-                    fakeSystemSuInstallCommand()
-                ),
-                "Max ADB Elevation" to listOf(
-                    maxAdbElevationCommand()
-                ),
-                "Remove Bridge Script" to listOf(
-                    "rm -f /data/local/tmp/shizulu-su /data/local/tmp/su; rm -rf /data/local/tmp/shizulu-fake-system; echo removed Shizulu SU Bridge scripts"
-                )
-            )
-        )
-    }
-
-    private fun suBridgeInstallCommand(): String {
-        return listOf(
-            "cat > /data/local/tmp/shizulu-su <<'EOF'",
-            "#!/system/bin/sh",
-            "uri='content://com.shizulu.manager.su'",
-            "version='Shizulu SU Bridge shim 1.2'",
-            "command=''",
-            "while [ \"\$#\" -gt 0 ]; do",
-            "  case \"\$1\" in",
-            "    -v|--version)",
-            "      echo \"\$version\"",
-            "      exit 0",
-            "      ;;",
-            "    -V)",
-            "      echo 1",
-            "      exit 0",
-            "      ;;",
-            "    -h|--help)",
-            "      echo 'usage: su [options] [-c command]'",
-            "      exit 0",
-            "      ;;",
-            "    -c|--command)",
-            "      shift",
-            "      command=\"\$*\"",
-            "      break",
-            "      ;;",
-            "    -c*)",
-            "      command=\"\${1#-c}\"",
-            "      shift",
-            "      if [ \"\$#\" -gt 0 ]; then command=\"\$command \$*\"; fi",
-            "      break",
-            "      ;;",
-            "    -s|--shell|-Z|--context)",
-            "      shift",
-            "      if [ \"\$#\" -gt 0 ]; then shift; fi",
-            "      ;;",
-            "    -p|-l|-m|-mm|-M|--mount-master|--preserve-environment)",
-            "      shift",
-            "      ;;",
-            "    0|root|shell)",
-            "      shift",
-            "      ;;",
-            "    *)",
-            "      command=\"\$*\"",
-            "      break",
-            "      ;;",
-            "  esac",
-            "done",
-            "if [ -z \"\$command\" ] && [ ! -t 0 ]; then",
-            "  command=\"\$(cat)\"",
-            "fi",
-            "if [ -z \"\$command\" ]; then",
-            "  echo 'Shizulu SU Bridge: interactive shells cannot be proxied without root.'",
-            "  exit 1",
-            "fi",
-            "result=\"\$(/system/bin/cmd content call --uri \"\$uri\" --method su --arg \"su -c \$command\" 2>&1)\"",
-            "echo \"\$result\"",
-            "echo \"\$result\" | grep -q 'success=false' && exit 1",
-            "exit 0",
-            "EOF",
-            "cp /data/local/tmp/shizulu-su /data/local/tmp/su",
-            "chmod 755 /data/local/tmp/shizulu-su /data/local/tmp/su",
-            "echo installed /data/local/tmp/shizulu-su",
-            "echo installed /data/local/tmp/su",
-            "echo compatible apps can use /data/local/tmp/su as their custom su path"
-        ).joinToString("\n")
-    }
-
-    private fun fakeSystemSuInstallCommand(): String {
-        return """
-            base=/data/local/tmp/shizulu-fake-system
-            bindir="${'$'}base/system/bin"
-            xbindir="${'$'}base/system/xbin"
-            uri='content://com.shizulu.manager.su'
-            mkdir -p "${'$'}bindir" "${'$'}xbindir"
-            cat > "${'$'}base/shizulu-su" <<'EOF'
-            #!/system/bin/sh
-            uri='content://com.shizulu.manager.su'
-            version='Shizulu fake /system/bin/su 1.0'
-            command=''
-            while [ "${'$'}#" -gt 0 ]; do
-              case "${'$'}1" in
-                -v|--version)
-                  echo "${'$'}version"
-                  exit 0
-                  ;;
-                -V)
-                  echo 1
-                  exit 0
-                  ;;
-                -h|--help)
-                  echo 'usage: su [options] [-c command]'
-                  exit 0
-                  ;;
-                -c|--command)
-                  shift
-                  command="${'$'}*"
-                  break
-                  ;;
-                -c*)
-                  command="${'$'}{1#-c}"
-                  shift
-                  if [ "${'$'}#" -gt 0 ]; then command="${'$'}command ${'$'}*"; fi
-                  break
-                  ;;
-                -s|--shell|-Z|--context)
-                  shift
-                  if [ "${'$'}#" -gt 0 ]; then shift; fi
-                  ;;
-                -p|-l|-m|-mm|-M|--mount-master|--preserve-environment)
-                  shift
-                  ;;
-                0|root|shell)
-                  shift
-                  ;;
-                *)
-                  command="${'$'}*"
-                  break
-                  ;;
-              esac
-            done
-            if [ -z "${'$'}command" ] && [ ! -t 0 ]; then
-              command="${'$'}(/system/bin/cat)"
-            fi
-            if [ -z "${'$'}command" ]; then
-              echo 'Shizulu fake su: interactive shells cannot be proxied without root.'
-              exit 1
-            fi
-            result="${'$'}(/system/bin/cmd content call --uri "${'$'}uri" --method su --arg "su -c ${'$'}command" 2>&1)"
-            echo "${'$'}result"
-            echo "${'$'}result" | /system/bin/grep -q 'success=false' && exit 1
-            exit 0
-            EOF
-            cp "${'$'}base/shizulu-su" "${'$'}bindir/su"
-            cp "${'$'}base/shizulu-su" "${'$'}xbindir/su"
-            chmod 755 "${'$'}base/shizulu-su" "${'$'}bindir/su" "${'$'}xbindir/su"
-            cat > "${'$'}base/shizulu-system-shell" <<'EOF'
-            #!/system/bin/sh
-            export SHIZULU_FAKE_SYSTEM=1
-            export SHIZULU_FAKE_SYSTEM_ROOT=/data/local/tmp/shizulu-fake-system
-            export PATH="/data/local/tmp/shizulu-fake-system/system/bin:/data/local/tmp/shizulu-fake-system/system/xbin:/data/local/tmp/shizulu-bin:${'$'}PATH"
-            exec /system/bin/sh "${'$'}@"
-            EOF
-            chmod 755 "${'$'}base/shizulu-system-shell"
-            cat > "${'$'}base/README.txt" <<'EOF'
-            Shizulu fake system su
-
-            Fake su paths:
-            /data/local/tmp/shizulu-fake-system/system/bin/su
-            /data/local/tmp/shizulu-fake-system/system/xbin/su
-
-            Launcher:
-            /data/local/tmp/shizulu-fake-system/shizulu-system-shell
-
-            This does not replace the real /system/bin/su path. It makes compatible tools that search PATH or accept a custom shell/custom su path resolve Shizulu's fake su first.
-            EOF
-            ln -sf "${'$'}bindir/su" /data/local/tmp/su 2>/dev/null || cp "${'$'}bindir/su" /data/local/tmp/su
-            chmod 755 /data/local/tmp/su
-            echo "Installed fake system su layout:"
-            ls -l "${'$'}bindir" "${'$'}xbindir" "${'$'}base/shizulu-system-shell"
-            echo
-            echo "Use this launcher for compatible command-line tools:"
-            echo "${'$'}base/shizulu-system-shell"
-            echo
-            echo "Inside that shell, command -v su should resolve to:"
-            PATH="${'$'}bindir:${'$'}xbindir:/data/local/tmp/shizulu-bin:${'$'}PATH" command -v su
-            echo
-            echo "Absolute /system/bin/su cannot be spoofed without root or a writable system mount."
-        """.trimIndent()
-    }
-
-    private fun shellInterceptorInstallCommand(): String {
-        return """
-            dir=/data/local/tmp/shizulu-bin
-            uri='content://com.shizulu.manager.su'
-            mkdir -p "${'$'}dir"
-            cat > "${'$'}dir/su" <<'EOF'
-            #!/system/bin/sh
-            uri='content://com.shizulu.manager.su'
-            version='Shizulu SU Bridge shim 1.3'
-            command=''
-            while [ "${'$'}#" -gt 0 ]; do
-              case "${'$'}1" in
-                -v|--version)
-                  echo "${'$'}version"
-                  exit 0
-                  ;;
-                -V)
-                  echo 1
-                  exit 0
-                  ;;
-                -h|--help)
-                  echo 'usage: su [options] [-c command]'
-                  exit 0
-                  ;;
-                -c|--command)
-                  shift
-                  command="${'$'}*"
-                  break
-                  ;;
-                -c*)
-                  command="${'$'}{1#-c}"
-                  shift
-                  if [ "${'$'}#" -gt 0 ]; then command="${'$'}command ${'$'}*"; fi
-                  break
-                  ;;
-                -s|--shell|-Z|--context)
-                  shift
-                  if [ "${'$'}#" -gt 0 ]; then shift; fi
-                  ;;
-                -p|-l|-m|-mm|-M|--mount-master|--preserve-environment)
-                  shift
-                  ;;
-                0|root|shell)
-                  shift
-                  ;;
-                *)
-                  command="${'$'}*"
-                  break
-                  ;;
-              esac
-            done
-            if [ -z "${'$'}command" ] && [ ! -t 0 ]; then
-              command="${'$'}(/system/bin/cat)"
-            fi
-            if [ -z "${'$'}command" ]; then
-              echo 'Shizulu SU Bridge: interactive shells cannot be proxied without root.'
-              exit 1
-            fi
-            result="${'$'}(/system/bin/cmd content call --uri "${'$'}uri" --method su --arg "su -c ${'$'}command" 2>&1)"
-            echo "${'$'}result"
-            echo "${'$'}result" | /system/bin/grep -q 'success=false' && exit 1
-            exit 0
-            EOF
-            make_wrapper() {
-              tool="${'$'}1"
-              cat > "${'$'}dir/${'$'}tool" <<EOF
-            #!/system/bin/sh
-            uri='content://com.shizulu.manager.su'
-            command='${'$'}tool '"\${'$'}*"
-            result="\$(/system/bin/cmd content call --uri "\${'$'}uri" --method exec --arg "\${'$'}command" 2>&1)"
-            echo "\${'$'}result"
-            echo "\${'$'}result" | /system/bin/grep -q 'success=false' && exit 1
-            exit 0
-            EOF
-            }
-            make_wrapper pm
-            make_wrapper am
-            make_wrapper settings
-            make_wrapper cmd
-            make_wrapper appops
-            cat > "${'$'}dir/shizulu-shell" <<'EOF'
-            #!/system/bin/sh
-            export PATH="/data/local/tmp/shizulu-bin:${'$'}PATH"
-            exec /system/bin/sh "${'$'}@"
-            EOF
-            chmod 755 "${'$'}dir" "${'$'}dir/"*
-            cp "${'$'}dir/su" /data/local/tmp/su
-            chmod 755 /data/local/tmp/su
-            echo "Installed Shizulu shell interceptors:"
-            ls -l "${'$'}dir"
-            echo
-            echo "Use /data/local/tmp/shizulu-bin/su as a custom su path."
-            echo "Use /data/local/tmp/shizulu-bin/shizulu-shell as a custom shell, or prepend ${'$'}dir to PATH."
-            echo "This cannot replace hardcoded /system/bin/su or force another app's private PATH without root."
-        """.trimIndent()
-    }
-
-    private fun colorBlendrCompatibilityCommand(): String {
-        return """
-            pkg=com.drdisagree.colorblendr
-            prefs=content://${'$'}pkg/${'$'}{pkg}_preferences
-            echo "Shizulu ColorBlendr compatibility setup"
-            echo "package=${'$'}pkg"
-            echo
-            if ! pm path "${'$'}pkg" >/dev/null 2>&1; then
-              echo "ColorBlendr is not installed."
-              exit 1
-            fi
-            echo "ColorBlendr is installed."
-            echo
-            echo "Important: ColorBlendr root mode uses libsu. Shizulu cannot intercept that root request from outside the app."
-            echo "Switching ColorBlendr to its Shizuku/rootless preference path and enabling theming flags."
-            echo
-            put_string() {
-              echo "$ content insert ${'$'}prefs/${'$'}1 = ${'$'}2"
-              cmd content insert --uri "${'$'}prefs/${'$'}1" --bind type:i:1 --bind value:s:"${'$'}2" 2>&1
-              echo
-            }
-            put_bool() {
-              echo "$ content insert ${'$'}prefs/${'$'}1 = ${'$'}2"
-              cmd content insert --uri "${'$'}prefs/${'$'}1" --bind type:i:6 --bind value:b:"${'$'}2" 2>&1
-              echo
-            }
-            put_string workingMethod SHIZUKU
-            put_bool shizukuThemingEnabled true
-            put_bool themingEnabled true
-            put_bool wirelessAdbThemingEnabled false
-            echo "Current system Material You setting:"
-            settings get secure theme_customization_overlay_packages 2>&1
-            echo
-            echo "Restarting ColorBlendr so it reloads preferences."
-            am force-stop "${'$'}pkg" 2>&1
-            monkey -p "${'$'}pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-            echo "Done. In ColorBlendr, choose Shizuku/rootless mode. Root-only ColorBlendr features still require real root because they are gated by ColorBlendr's own isRootMode/libsu checks."
-        """.trimIndent()
-    }
-
     private fun maxAdbElevationCommand(): String {
         val pkg = packageName.shellQuote()
         return """
@@ -2488,7 +1825,8 @@ class MainActivity : Activity() {
             run cmd deviceidle whitelist +"${'$'}pkg"
             echo "Verifying package state..."
             run cmd appops get "${'$'}pkg"
-            run dumpsys package "${'$'}pkg"
+            echo "$ dumpsys package ${'$'}pkg | key summary"
+            dumpsys package "${'$'}pkg" 2>&1 | grep -E 'userId=|pkg=|granted=true|WRITE_SECURE_SETTINGS|READ_LOGS|DUMP|POST_NOTIFICATIONS' | head -n 80
             echo "Elevation attempt complete. Commands that show non-zero exit were blocked by this Android build, but every shell-accessible elevation was attempted."
         """.trimIndent()
     }
@@ -3084,9 +2422,13 @@ class MainActivity : Activity() {
     }
 
     private fun showOutput(title: String, output: String) {
+        val visibleOutput = output.ifBlank { "Done." }.let {
+            if (it.length <= MAX_OUTPUT_CHARS) it
+            else it.take(MAX_OUTPUT_CHARS) + "\n\n...output trimmed to keep Shizulu stable. Full command status is still in logs where available."
+        }
         android.app.AlertDialog.Builder(this)
             .setTitle(title)
-            .setMessage(output.ifBlank { "Done." })
+            .setMessage(visibleOutput)
             .setPositiveButton("OK", null)
             .show()
     }
@@ -3253,12 +2595,11 @@ class MainActivity : Activity() {
         private const val KEY_UPDATER_STATUS = "updater_status"
         private const val KEY_LATEST_RELEASE = "latest_release"
         private const val KEY_WIRELESS_ADB_KEEP_ALIVE = "wireless_adb_keep_alive"
-        private const val KEY_SU_BRIDGE_ENABLED = "su_bridge_enabled"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
-        private const val MAX_SPOOF_ROOT_APP_ROWS = 80
+        private const val MAX_OUTPUT_CHARS = 12_000
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
@@ -3312,12 +2653,6 @@ data class ProfileStep(
 data class ProfileChoice(
     val label: String,
     val step: ProfileStep
-)
-
-data class AppGrantCandidate(
-    val label: String,
-    val packageName: String,
-    val system: Boolean
 )
 
 data class GithubRelease(
