@@ -2758,7 +2758,7 @@ class MainActivity : Activity() {
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
         private val NUMBER_VALUE_PATTERN = Regex("^-?[0-9]+(\\.[0-9]+)?$")
-        private val VARIABLE_PATTERN = Regex("\\{\\{([A-Za-z][A-Za-z0-9_]*)}}")
+        private val VARIABLE_PATTERN = Regex("\\{\\{([A-Za-z][A-Za-z0-9_]*)\\}\\}")
         private val SAFE_SHELL_TOKEN_PATTERN = Regex("^[A-Za-z0-9_./:-]+$")
 
         private val PROFILES = listOf(
