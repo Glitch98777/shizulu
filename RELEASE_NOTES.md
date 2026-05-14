@@ -26,7 +26,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - SU Bridge can now install Shizuku+-style shell interceptors under `/data/local/tmp/shizulu-bin` for `su`, `pm`, `am`, `settings`, `cmd`, and `appops`, plus a `shizulu-shell` PATH launcher for compatible tools.
 - Rootless Power Tools now has a direct Install Shell Interceptors button on the card.
 - SU Bridge now detects compatible app root-style requests, shows an Allow/Deny access prompt, remembers approved packages, and only executes routed ADB/Shizuku commands after approval.
-- Rootless Power Tools can now run a best-effort Root Request Detection scan that looks for visible su/libsu/root attempt signals, pre-grants likely packages for Shizulu fake-root routing, and reports what was detected.
+- Rootless Power Tools can now run a best-effort Root Request Detection scan that reads protected ADB/Shizuku log buffers plus foreground process signals, detects likely su/libsu/root attempts, and opens the Shizulu grant prompt for likely packages.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

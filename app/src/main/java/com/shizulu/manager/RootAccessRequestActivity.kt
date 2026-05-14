@@ -41,9 +41,9 @@ class RootAccessRequestActivity : Activity() {
         }
 
         AlertDialog.Builder(this)
-            .setTitle("Allow root-style access?")
+            .setTitle("Grant access to device?")
             .setView(body)
-            .setPositiveButton("Allow") { _, _ ->
+            .setPositiveButton("Grant") { _, _ ->
                 decide(requestId, SuBridgeProvider.DECISION_ALLOW)
             }
             .setNegativeButton("Deny") { _, _ ->
@@ -56,9 +56,17 @@ class RootAccessRequestActivity : Activity() {
     }
 
     private fun decide(requestId: String, decision: String) {
-        prefs.edit()
+        val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
+        val editor = prefs.edit()
             .putString("${SuBridgeProvider.KEY_ROOT_DECISION_PREFIX}$requestId", decision)
-            .apply()
+        if (decision == SuBridgeProvider.DECISION_ALLOW && packageName.matches(PACKAGE_NAME_PATTERN)) {
+            val allowed = prefs.getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
+            editor.putStringSet(
+                SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES,
+                allowed.toMutableSet().apply { add(packageName) }
+            )
+        }
+        editor.apply()
         finish()
     }
 
@@ -71,5 +79,6 @@ class RootAccessRequestActivity : Activity() {
         const val EXTRA_METHOD = "method"
         const val EXTRA_COMMAND = "command"
         private const val PREFS = "shizulu_settings"
+        private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
     }
 }

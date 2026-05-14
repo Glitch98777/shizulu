@@ -43,6 +43,7 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -1375,15 +1376,8 @@ class MainActivity : Activity() {
             .toList()
 
         if (packages.isNotEmpty()) {
-            val existing = settingsPrefs
-                .getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet())
-                .orEmpty()
-            val updated = existing.toMutableSet().apply { addAll(packages) }
-            settingsPrefs.edit()
-                .putBoolean(KEY_SU_BRIDGE_ENABLED, true)
-                .putStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, updated)
-                .apply()
-            appendLog("Root request detection pre-granted: ${packages.joinToString(", ")}")
+            appendLog("Root request detection found candidates: ${packages.joinToString(", ")}")
+            mainHandler.post { showDetectedRootPrompts(packages, raw) }
         } else {
             appendLog("Root request detection found no package candidates")
         }
@@ -1394,13 +1388,63 @@ class MainActivity : Activity() {
                 append("No package candidates were visible in logcat/window/process signals.\n")
                 append("Some apps call /system/bin/su privately, and Android does not expose that failed exec to another normal APK.\n")
             } else {
-                append("Pre-granted Shizulu fake-root routing for:\n")
+                append("Detected likely root request package candidates:\n")
                 packages.forEach { append("- ").append(it).append('\n') }
-                append("\nIf one of these apps retries through Shizulu's provider/interceptor/custom su path, Shizulu will answer as already approved and route compatible commands through ADB/Shizuku.\n")
+                append("\nShizulu opened the grant access prompt. If allowed, that package is approved for Shizulu fake-root routing, so compatible retries through the provider/interceptor/custom su path can receive a granted response and run ADB/Shizuku-backed commands.\n")
             }
             append("\nRaw scan:\n")
             append(raw.ifBlank { "No output." })
         }
+    }
+
+    private fun showDetectedRootPrompts(packages: List<String>, raw: String) {
+        val alreadyAllowed = settingsPrefs
+            .getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet())
+            .orEmpty()
+        packages
+            .filterNot { it in alreadyAllowed }
+            .take(MAX_DETECTED_ROOT_PROMPTS)
+            .forEach { packageName ->
+                val requestId = UUID.randomUUID().toString()
+                settingsPrefs.edit()
+                    .putString("${SuBridgeProvider.KEY_ROOT_DECISION_PREFIX}$requestId", SuBridgeProvider.DECISION_PENDING)
+                    .apply()
+                val label = resolveApplicationLabel(packageName)
+                val commandPreview = buildString {
+                    append("Detected by protected ADB/Shizuku log scan.\n")
+                    append(raw.lineSequence()
+                        .filter { line ->
+                            line.contains(packageName) ||
+                                line.contains("su", ignoreCase = true) ||
+                                line.contains("root", ignoreCase = true)
+                        }
+                        .take(8)
+                        .joinToString("\n")
+                    )
+                }.take(MAX_ROOT_DETECTION_PREVIEW)
+                runCatching {
+                    startActivity(
+                        Intent(this, RootAccessRequestActivity::class.java)
+                            .putExtra(RootAccessRequestActivity.EXTRA_REQUEST_ID, requestId)
+                            .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_NAME, packageName)
+                            .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_LABEL, label)
+                            .putExtra(RootAccessRequestActivity.EXTRA_METHOD, "protected-log root detection")
+                            .putExtra(RootAccessRequestActivity.EXTRA_COMMAND, commandPreview)
+                    )
+                }.onSuccess {
+                    appendLog("Root access prompt opened for detected package: $packageName")
+                }.onFailure {
+                    settingsPrefs.edit().remove("${SuBridgeProvider.KEY_ROOT_DECISION_PREFIX}$requestId").apply()
+                    appendLog("Root access prompt failed for detected package $packageName: ${it.message ?: it.javaClass.simpleName}")
+                }
+            }
+    }
+
+    private fun resolveApplicationLabel(packageName: String): String {
+        return runCatching {
+            val info = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(info).toString()
+        }.getOrDefault(packageName)
     }
 
     private fun runSuBridgeSelfTest() {
@@ -2300,11 +2344,15 @@ class MainActivity : Activity() {
             tmp=/data/local/tmp/shizulu-root-detect.log
             : > "${'$'}tmp"
             echo "[foreground]"
-            dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 5 | tee -a "${'$'}tmp"
-            dumpsys activity activities 2>/dev/null | grep -E 'topResumedActivity|mResumedActivity|ResumedActivity' | tail -n 5 | tee -a "${'$'}tmp"
+            dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp|topApp|focusedApp' | tail -n 8 | tee -a "${'$'}tmp"
+            dumpsys activity activities 2>/dev/null | grep -E 'topResumedActivity|mResumedActivity|ResumedActivity|mLastPausedActivity' | tail -n 8 | tee -a "${'$'}tmp"
+            dumpsys activity processes 2>/dev/null | grep -E 'ProcessRecord|top-activity|foreground|visible' | tail -n 30 | tee -a "${'$'}tmp"
             echo
-            echo "[root-ish logcat]"
-            logcat -d -v brief -t 800 2>/dev/null | grep -Ei '(^|[^a-z])(su|libsu|root|magisk|kernelsu|ksu|superuser|permission denied|not rooted|root denied)([^a-z]|${'$'})' | tail -n 80 | tee -a "${'$'}tmp"
+            echo "[protected root-ish logcat]"
+            logcat -b all -d -v threadtime -t 1500 2>/dev/null | grep -Ei '(^|[^a-z])(su|/su|libsu|root|magisk|kernelsu|ksu|superuser|permission denied|not rooted|root denied|exec.*denied|cannot execute|no such file.*su)([^a-z]|${'$'})' | tail -n 120 | tee -a "${'$'}tmp"
+            echo
+            echo "[package manager recent deny/search hints]"
+            dumpsys package 2>/dev/null | grep -Ei 'requested permissions|android.permission|sharedUser|Packages:' | grep -Ei 'shizuku|root|su|shell|dump|logs|secure|settings' | tail -n 60 | tee -a "${'$'}tmp"
             echo
             echo "[active su processes]"
             ps -A 2>/dev/null | grep -Ei '(^|/)(su|magisk|ksud|superuser)( |${'$'})' | tee -a "${'$'}tmp" || true
@@ -2322,7 +2370,7 @@ class MainActivity : Activity() {
             echo
             echo "Detection notes:"
             echo "- Hardcoded /system/bin/su calls cannot be answered after they already failed."
-            echo "- Detected packages are pre-approved only for future Shizulu bridge/interceptor/custom su path retries."
+            echo "- Detected packages can be approved for future Shizulu bridge/interceptor/custom su path retries."
         """.trimIndent()
     }
 
@@ -3091,6 +3139,8 @@ class MainActivity : Activity() {
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
+        private const val MAX_DETECTED_ROOT_PROMPTS = 3
+        private const val MAX_ROOT_DETECTION_PREVIEW = 600
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
