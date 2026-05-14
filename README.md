@@ -9,6 +9,7 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 ## Highlights
 
 - Import `.json` shizules from Android's file picker.
+- Browse the Shizule Store from the bottom navigation, install public shizules, and submit new community shizules through GitHub review.
 - Install and remove shizules from private app storage.
 - Request Shizuku permission and bind a Shizuku `UserService`.
 - Run shizule commands as the ADB/shell identity.
@@ -83,6 +84,12 @@ The optional `signature` metadata is informational for now; it is a trust signal
 - `light-debloat-manager.shizule.json`: Conservative optional Google/Pixel app disable/restore profile for user 0.
 - `shizulu-capability-booster.shizule.json`: Attempts legitimate ADB-level grants and app-ops for Shizulu.
 - `disable-animations.shizule.json`: Minimal animation-disable sample.
+
+## Shizule Store
+
+The in-app Store reads the public index at `samples/store-index.json`. Each entry points to a raw shizule JSON URL and includes author, risk, tags, version, and description metadata.
+
+To publish a shizule, use the app's Store > Publish button or open a GitHub issue with the `Shizule Store submission` template. Reviewed submissions can be added to the index so they become visible in the app for everyone.
 
 ## Safety Model
 

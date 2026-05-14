@@ -1,0 +1,59 @@
+name: Shizule Store submission
+description: Submit a shizule for the public Shizulu Store index.
+title: "[Store] Add "
+labels: ["shizule-store"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submit a shizule JSON for review. Accepted shizules are added to `samples/store-index.json` so they appear in the app's Store tab.
+  - type: input
+    id: name
+    attributes:
+      label: Shizule name
+      placeholder: Animation Tuner
+    validations:
+      required: true
+  - type: input
+    id: id
+    attributes:
+      label: Shizule id
+      placeholder: com.example.my_shizule
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What does it do?
+      description: Explain every command category it runs and whether it has a restore action.
+    validations:
+      required: true
+  - type: textarea
+    id: json
+    attributes:
+      label: Shizule JSON
+      description: Paste the complete .json content, or link to a raw GitHub URL.
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I tested this with Shizulu Dry Run first.
+          required: true
+        - label: I listed any commands that disable packages, change settings, or grant permissions.
+          required: true
+        - label: This shizule does not claim to provide root or bypass Android security boundaries.
+          required: true

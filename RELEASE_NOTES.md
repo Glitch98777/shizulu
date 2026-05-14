@@ -23,6 +23,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Shizule JSON now supports dynamic variables with `{{variable}}` placeholders, including package prompts that ask which app/package to apply an action to before it runs.
 - Fixed a launch crash caused by Android rejecting the dynamic variable placeholder parser pattern.
 - Package-style variables such as `{{target_app}}` now open an in-app installed-app picker instead of requiring manual package-name typing.
+- Bottom navigation now has a Shizule Store tab with a cart icon, public index loading, install/reinstall buttons, and a GitHub submission path for community shizules.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

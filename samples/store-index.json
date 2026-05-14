@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "name": "Shizulu Public Store",
+  "description": "Community-visible shizules reviewed through the Shizulu GitHub repository.",
+  "items": [
+    {
+      "id": "com.shizulu.sample.animation_tuner",
+      "name": "Animation Tuner",
+      "version": "1.0.0",
+      "description": "Off, fast, normal, and relaxed animation presets using shell-accessible settings.",
+      "author": "Shizulu",
+      "risk": "Low",
+      "tags": ["settings", "animations"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/animation-tuner.shizule.json"
+    },
+    {
+      "id": "com.shizulu.sample.display_comfort_pack",
+      "name": "Display Comfort Pack",
+      "version": "1.0.0",
+      "description": "Calmer display settings and a restore action for supported Android builds.",
+      "author": "Shizulu",
+      "risk": "Low",
+      "tags": ["display", "comfort"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/display-comfort-pack.shizule.json"
+    },
+    {
+      "id": "com.shizulu.sample.light_debloat_manager",
+      "name": "Light Debloat Manager",
+      "version": "1.0.0",
+      "description": "Conservative user-0 disable/restore actions for common optional apps.",
+      "author": "Shizulu",
+      "risk": "Medium",
+      "tags": ["debloat", "packages"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/light-debloat-manager.shizule.json"
+    },
+    {
+      "id": "com.shizulu.sample.capability_booster",
+      "name": "Shizulu Capability Booster",
+      "version": "1.0.0",
+      "description": "Attempts legitimate ADB-level grants and app-ops for Shizulu, with restore support.",
+      "author": "Shizulu",
+      "risk": "Medium",
+      "tags": ["permissions", "appops"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/shizulu-capability-booster.shizule.json"
+    }
+  ]
+}

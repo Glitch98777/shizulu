@@ -50,6 +50,17 @@ private data class AppChoice(
     val packageName: String
 )
 
+private data class StoreItem(
+    val id: String,
+    val name: String,
+    val version: String,
+    val description: String,
+    val author: String,
+    val url: String,
+    val tags: List<String>,
+    val risk: String
+)
+
 class MainActivity : Activity() {
     private val store by lazy { ShizuleStore(this) }
     private val logPrefs by lazy { getSharedPreferences("shizulu_logs", MODE_PRIVATE) }
@@ -67,7 +78,7 @@ class MainActivity : Activity() {
     private lateinit var dryRunButton: TextView
     private lateinit var moduleCount: TextView
     private lateinit var moduleSummaryText: TextView
-    private lateinit var profileSummaryText: TextView
+    private lateinit var storeSummaryText: TextView
     private lateinit var modeSummaryText: TextView
     private lateinit var updaterStatusText: TextView
     private lateinit var updaterButton: TextView
@@ -76,17 +87,20 @@ class MainActivity : Activity() {
     private lateinit var keepAliveButton: TextView
     private lateinit var batteryButton: TextView
     private lateinit var profilesList: LinearLayout
+    private lateinit var storeList: LinearLayout
     private lateinit var moduleList: LinearLayout
     private lateinit var contentHost: FrameLayout
     private lateinit var homeNav: LinearLayout
     private lateinit var modulesNav: LinearLayout
-    private lateinit var profilesNav: LinearLayout
+    private lateinit var storeNav: LinearLayout
     private lateinit var toolsNav: LinearLayout
     private var service: IShizuluService? = null
     private var dryRunEnabled = false
     private var executionMode = ExecutionMode.SHIZUKU
     private var currentPage = Page.HOME
     private var latestRelease: GithubRelease? = null
+    private var publicStoreItems: List<StoreItem> = emptyList()
+    private var storeLoading = false
 
     private val permissionListener =
         Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -221,16 +235,21 @@ class MainActivity : Activity() {
                 moduleList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 content.addView(moduleList, spacedParams(top = 10))
             }
-            Page.PROFILES -> {
-                content.addView(profilesHeader(), spacedParams(top = 8))
-                profilesList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                content.addView(profilesList, spacedParams(top = 10))
+            Page.STORE -> {
+                content.addView(storeHeader(), spacedParams(top = 8))
+                storeList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                content.addView(storeList, spacedParams(top = 10))
+                refreshStoreList()
+                if (publicStoreItems.isEmpty() && !storeLoading) loadPublicStore()
             }
             Page.TOOLS -> {
                 content.addView(sectionTitle("Tools"), spacedParams(top = 8))
                 content.addView(executionModePanel(), spacedParams(top = 10))
                 content.addView(wirelessAdbPanel(), spacedParams(top = 10))
                 content.addView(shizuleLabPanel(), spacedParams(top = 10))
+                content.addView(profilesHeader(), spacedParams(top = 10))
+                profilesList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                content.addView(profilesList, spacedParams(top = 10))
                 content.addView(rootlessPowerPanel(), spacedParams(top = 10))
                 content.addView(persistencePanel(), spacedParams(top = 10))
                 content.addView(updaterPanel(), spacedParams(top = 10))
@@ -250,12 +269,12 @@ class MainActivity : Activity() {
 
             homeNav = navButton(Page.HOME, "Home") { showPage(Page.HOME) }
             modulesNav = navButton(Page.MODULES, "Modules") { showPage(Page.MODULES) }
-            profilesNav = navButton(Page.PROFILES, "Profiles") { showPage(Page.PROFILES) }
+            storeNav = navButton(Page.STORE, "Store") { showPage(Page.STORE) }
             toolsNav = navButton(Page.TOOLS, "Tools") { showPage(Page.TOOLS) }
 
             addView(homeNav, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(modulesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
-            addView(profilesNav, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(storeNav, LinearLayout.LayoutParams(0, dp(48), 1f))
             addView(toolsNav, LinearLayout.LayoutParams(0, dp(48), 1f))
         }
     }
@@ -284,7 +303,7 @@ class MainActivity : Activity() {
         if (!::homeNav.isInitialized) return
         setNavState(homeNav, currentPage == Page.HOME)
         setNavState(modulesNav, currentPage == Page.MODULES)
-        setNavState(profilesNav, currentPage == Page.PROFILES)
+        setNavState(storeNav, currentPage == Page.STORE)
         setNavState(toolsNav, currentPage == Page.TOOLS)
     }
 
@@ -405,7 +424,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Install JSON modules, choose an execution backend, then run actions from Profiles or Installed shizules."
+                text = "Install JSON modules, choose an execution backend, then run actions from Store or Installed shizules."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(dp(2), dp(12), dp(2), 0)
@@ -419,11 +438,11 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
 
             moduleSummaryText = summaryTile("0", "Modules")
-            profileSummaryText = summaryTile("0", "Profiles")
+            storeSummaryText = summaryTile("0", "Store")
             modeSummaryText = summaryTile("Live", "Mode")
 
             addView(moduleSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f))
-            addView(profileSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f).apply { leftMargin = dp(10) })
+            addView(storeSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f).apply { leftMargin = dp(10) })
             addView(modeSummaryText, LinearLayout.LayoutParams(0, dp(72), 1f).apply { leftMargin = dp(10) })
         }
     }
@@ -453,6 +472,41 @@ class MainActivity : Activity() {
 
             dryRunButton = secondaryButton("Dry Run: Off") { toggleDryRun() }
             addView(dryRunButton, LinearLayout.LayoutParams(dp(128), dp(42)))
+        }
+    }
+
+    private fun storeHeader(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+
+                addView(TextView(context).apply {
+                    text = "Shizule Store"
+                    textSize = 18f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+
+                addView(compactButton("Refresh", false) { loadPublicStore(force = true) }, LinearLayout.LayoutParams(dp(104), dp(42)))
+            })
+
+            addView(TextView(context).apply {
+                text = "Public shizules from the community index. Review commands with Dry Run before running anything new."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, dp(6), 0, dp(10))
+            })
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(secondaryButton("Create") { showShizuleMaker() }, LinearLayout.LayoutParams(0, dp(44), 1f))
+                addView(secondaryButton("Publish") { openStorePublishPage() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                    leftMargin = dp(10)
+                })
+            })
         }
     }
 
@@ -876,6 +930,9 @@ class MainActivity : Activity() {
         if (::moduleSummaryText.isInitialized) {
             moduleSummaryText.text = "${shizules.size}\nModules"
         }
+        if (::storeSummaryText.isInitialized) {
+            storeSummaryText.text = "${publicStoreItems.size}\nStore"
+        }
         if (::profilesList.isInitialized) {
             refreshProfiles(shizules)
         }
@@ -888,6 +945,116 @@ class MainActivity : Activity() {
             shizules.forEachIndexed { index, shizule ->
                 moduleList.addView(moduleView(shizule), spacedParams(top = if (index == 0) 0 else 12))
             }
+        }
+    }
+
+    private fun refreshStoreList() {
+        if (!::storeList.isInitialized) return
+        storeList.removeAllViews()
+        if (::storeSummaryText.isInitialized) {
+            storeSummaryText.text = "${publicStoreItems.size}\nStore"
+        }
+        when {
+            storeLoading -> storeList.addView(storeMessageView("Loading public shizules...", "Fetching the public index from GitHub."))
+            publicStoreItems.isEmpty() -> {
+                storeList.addView(storeMessageView("No store items loaded", "Tap Refresh to load the public store, or Create to build your own shizule."))
+            }
+            else -> publicStoreItems.forEachIndexed { index, item ->
+                storeList.addView(storeItemView(item), spacedParams(top = if (index == 0) 0 else 12))
+            }
+        }
+    }
+
+    private fun storeMessageView(title: String, body: String): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(22), dp(28), dp(22), dp(28))
+            background = roundedRect(COLORS.surfaceAlt, dp(8), COLORS.outline, 1)
+
+            addView(TextView(context).apply {
+                text = title
+                textSize = 17f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+                gravity = Gravity.CENTER
+            })
+            addView(TextView(context).apply {
+                text = body
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
+    }
+
+    private fun storeItemView(item: StoreItem): View {
+        val installed = store.list().any { it.id == item.id }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(15), dp(16), dp(14))
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(context).apply {
+                        text = item.name
+                        textSize = 17f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(COLORS.ink)
+                        includeFontPadding = false
+                    })
+                    addView(TextView(context).apply {
+                        text = "${item.author} • ${item.id}"
+                        textSize = 12f
+                        setTextColor(COLORS.muted)
+                        setPadding(0, dp(5), 0, 0)
+                    })
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+
+                addView(TextView(context).apply {
+                    text = item.version
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    gravity = Gravity.CENTER
+                    setPadding(dp(9), dp(5), dp(9), dp(5))
+                    background = roundedRect(COLORS.primarySoft, dp(14))
+                })
+            })
+
+            addView(TextView(context).apply {
+                text = item.description.ifBlank { "No description provided." }
+                textSize = 14f
+                setTextColor(COLORS.body)
+                setLineSpacing(0f, 1.08f)
+                setPadding(0, dp(12), 0, dp(10))
+            })
+
+            val meta = buildList {
+                if (item.risk.isNotBlank()) add("Risk: ${item.risk}")
+                if (item.tags.isNotEmpty()) add(item.tags.joinToString(" • "))
+            }.joinToString("   ")
+            if (meta.isNotBlank()) {
+                addView(TextView(context).apply {
+                    text = meta
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.muted)
+                    setPadding(0, 0, 0, dp(12))
+                })
+            }
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton(if (installed) "Reinstall" else "Install", filled = true) { installStoreItem(item) })
+                addView(compactButton("Details", filled = false) { showStoreItemDetails(item) }, rowGapParams())
+            })
         }
     }
 
@@ -905,9 +1072,6 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, -2))
 
         val profiles = PROFILES.filterNot { profileKey(it) in hiddenBuiltIns } + loadCustomProfiles()
-        if (::profileSummaryText.isInitialized) {
-            profileSummaryText.text = "${profiles.size}\nProfiles"
-        }
         profiles.forEachIndexed { index, profile ->
             profilesList.addView(profileView(profile, shizules), spacedParams(top = if (index == 0) 0 else 10))
         }
@@ -1100,6 +1264,148 @@ class MainActivity : Activity() {
                 })
             })
         }
+    }
+
+    private fun loadPublicStore(force: Boolean = false) {
+        if (storeLoading) return
+        if (publicStoreItems.isNotEmpty() && !force) {
+            refreshStoreList()
+            return
+        }
+        storeLoading = true
+        refreshStoreList()
+        appendLog("Shizule Store refresh started")
+        executor.execute {
+            runCatching { fetchStoreItems() }
+                .onSuccess { items ->
+                    publicStoreItems = items
+                    appendLog("Shizule Store loaded: ${items.size} item(s)")
+                    mainHandler.post {
+                        storeLoading = false
+                        refreshStoreList()
+                    }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Shizule Store refresh failed: $message")
+                    val fallback = builtInStoreItems()
+                    publicStoreItems = fallback
+                    mainHandler.post {
+                        storeLoading = false
+                        refreshStoreList()
+                        Toast.makeText(this, "Store offline; showing bundled picks.", Toast.LENGTH_LONG).show()
+                    }
+                }
+        }
+    }
+
+    private fun fetchStoreItems(): List<StoreItem> {
+        val obj = JSONObject(httpGet(SHIZULE_STORE_INDEX_URL))
+        val items = obj.optJSONArray("items") ?: JSONArray()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = parseStoreItem(items.getJSONObject(index))
+                if (item.url.isNotBlank()) add(item)
+            }
+        }
+    }
+
+    private fun parseStoreItem(obj: JSONObject): StoreItem {
+        val tags = obj.optJSONArray("tags") ?: JSONArray()
+        return StoreItem(
+            id = obj.optString("id").trim(),
+            name = obj.optString("name", obj.optString("id", "Untitled Shizule")).trim().take(80),
+            version = obj.optString("version", "1.0.0").trim().take(32),
+            description = obj.optString("description", "").trim().take(240),
+            author = obj.optString("author", "Community").trim().take(80),
+            url = obj.optString("url").trim(),
+            tags = buildList {
+                for (index in 0 until tags.length()) add(tags.optString(index).take(28))
+            }.filter { it.isNotBlank() },
+            risk = obj.optString("risk", "Review").trim().take(32)
+        )
+    }
+
+    private fun builtInStoreItems(): List<StoreItem> {
+        return listOf(
+            StoreItem(
+                id = "com.shizulu.sample.animation_tuner",
+                name = "Animation Tuner",
+                version = "1.0.0",
+                description = "Off, fast, normal, and relaxed animation presets using shell-accessible settings.",
+                author = "Shizulu",
+                url = "$SHIZULE_STORE_RAW_BASE/animation-tuner.shizule.json",
+                tags = listOf("settings", "animations"),
+                risk = "Low"
+            ),
+            StoreItem(
+                id = "com.shizulu.sample.display_comfort_pack",
+                name = "Display Comfort Pack",
+                version = "1.0.0",
+                description = "Calmer display settings and a restore action for supported Android builds.",
+                author = "Shizulu",
+                url = "$SHIZULE_STORE_RAW_BASE/display-comfort-pack.shizule.json",
+                tags = listOf("display", "comfort"),
+                risk = "Low"
+            ),
+            StoreItem(
+                id = "com.shizulu.sample.light_debloat_manager",
+                name = "Light Debloat Manager",
+                version = "1.0.0",
+                description = "Conservative user-0 disable/restore actions for common optional apps.",
+                author = "Shizulu",
+                url = "$SHIZULE_STORE_RAW_BASE/light-debloat-manager.shizule.json",
+                tags = listOf("debloat", "packages"),
+                risk = "Medium"
+            )
+        )
+    }
+
+    private fun installStoreItem(item: StoreItem) {
+        appendLog("Store install started: ${item.id}")
+        Toast.makeText(this, "Downloading ${item.name}...", Toast.LENGTH_SHORT).show()
+        executor.execute {
+            runCatching {
+                val raw = httpGet(item.url)
+                val shizule = Shizule.fromJson(raw)
+                require(shizule.id == item.id) {
+                    "Store index id ${item.id} did not match downloaded shizule ${shizule.id}."
+                }
+                raw to shizule
+            }
+                .onSuccess { (raw, shizule) ->
+                    mainHandler.post {
+                        installTrusted(raw, shizule)
+                    }
+                }
+                .onFailure {
+                    val message = it.message ?: it.javaClass.simpleName
+                    appendLog("Store install failed for ${item.id}: $message")
+                    mainHandler.post {
+                        showOutput("Store Install Failed", "${item.name}\n\n$message")
+                    }
+                }
+        }
+    }
+
+    private fun showStoreItemDetails(item: StoreItem) {
+        showOutput(
+            item.name,
+            buildString {
+                append("ID: ").append(item.id).append('\n')
+                append("Version: ").append(item.version).append('\n')
+                append("Author: ").append(item.author).append('\n')
+                append("Risk: ").append(item.risk.ifBlank { "Review" }).append('\n')
+                if (item.tags.isNotEmpty()) append("Tags: ").append(item.tags.joinToString(", ")).append('\n')
+                append('\n').append(item.description.ifBlank { "No description provided." })
+                append("\n\nSource:\n").append(item.url)
+            }
+        )
+    }
+
+    private fun openStorePublishPage() {
+        appendLog("Opening Shizule Store publish page")
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHIZULE_STORE_PUBLISH_URL)))
     }
 
     private fun openJsonPicker() {
@@ -2824,6 +3130,9 @@ class MainActivity : Activity() {
         private const val MAX_VARIABLE_VALUE_LENGTH = 240
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
+        private const val SHIZULE_STORE_RAW_BASE = "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples"
+        private const val SHIZULE_STORE_INDEX_URL = "$SHIZULE_STORE_RAW_BASE/store-index.json"
+        private const val SHIZULE_STORE_PUBLISH_URL = "https://github.com/Glitch98777/shizulu/issues/new?template=shizule_submission.yml"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
         private val NUMBER_VALUE_PATTERN = Regex("^-?[0-9]+(\\.[0-9]+)?$")
         private val VARIABLE_PATTERN = Regex("\\{\\{([A-Za-z][A-Za-z0-9_]*)\\}\\}")
@@ -2939,7 +3248,7 @@ data class ThemePalette(
 enum class Page {
     HOME,
     MODULES,
-    PROFILES,
+    STORE,
     TOOLS
 }
 
@@ -3049,7 +3358,7 @@ class NavIconView(
         when (page) {
             Page.HOME -> drawHome(canvas, w, h)
             Page.MODULES -> drawModules(canvas, w, h)
-            Page.PROFILES -> drawProfiles(canvas, w, h)
+            Page.STORE -> drawStore(canvas, w, h)
             Page.TOOLS -> drawTools(canvas, w, h)
         }
     }
@@ -3080,17 +3389,18 @@ class NavIconView(
         }
     }
 
-    private fun drawProfiles(canvas: Canvas, w: Float, h: Float) {
+    private fun drawStore(canvas: Canvas, w: Float, h: Float) {
         val left = w * 0.20f
-        val right = w * 0.80f
-        val height = h * 0.18f
-        val top = h * 0.22f
-        repeat(3) { index ->
-            val y = top + index * h * 0.20f
-            val inset = index * w * 0.045f
-            rect.set(left + inset, y, right - inset, y + height)
-            canvas.drawRoundRect(rect, 5f, 5f, paint)
-        }
+        val top = h * 0.26f
+        val right = w * 0.78f
+        val bottom = h * 0.66f
+        canvas.drawLine(w * 0.16f, h * 0.18f, w * 0.26f, h * 0.18f, paint)
+        canvas.drawLine(w * 0.26f, h * 0.18f, w * 0.34f, bottom, paint)
+        rect.set(left, top, right, bottom)
+        canvas.drawRoundRect(rect, 4f, 4f, paint)
+        canvas.drawLine(w * 0.28f, h * 0.38f, w * 0.73f, h * 0.38f, paint)
+        canvas.drawCircle(w * 0.36f, h * 0.82f, w * 0.055f, fillPaint)
+        canvas.drawCircle(w * 0.70f, h * 0.82f, w * 0.055f, fillPaint)
     }
 
     private fun drawTools(canvas: Canvas, w: Float, h: Float) {
