@@ -9,6 +9,19 @@ enum class RiskLevel {
     CRITICAL;
 
     fun atLeast(other: RiskLevel): Boolean = ordinal >= other.ordinal
+
+    fun label(): String {
+        return when (this) {
+            LOW -> "low risk"
+            MEDIUM -> "medium risk"
+            HIGH -> "high risk"
+            CRITICAL -> "critical risk"
+        }
+    }
+
+    fun sentenceLabel(): String {
+        return label().replaceFirstChar { it.uppercase() }
+    }
 }
 
 data class CommandRisk(
@@ -112,11 +125,13 @@ object ShizuleRiskScanner {
         if (Regex("""\b(su|magisk|resetprop|zygisk)\b""").containsMatchIn(lower)) {
             mark(RiskLevel.CRITICAL, "Requests root/Magisk-only behavior. Shizulu is rootless.", shouldBlock = true)
         }
-        if (Regex("""\b(play integrity|playintegrity|safetynet|banking|drm|anti[-_ ]?cheat|bypass)\b""").containsMatchIn(lower)) {
+        if (looksLikeSecurityBypass(lower)) {
             mark(RiskLevel.CRITICAL, "Looks like a bypass or security-evasion attempt, which Shizulu will not support.", shouldBlock = true)
         }
-        val disabledCore = corePackages.firstOrNull { pkg ->
-            (lower.contains("pm disable") || lower.contains("cmd package disable")) && lower.contains(pkg)
+        val disabledCore = if (lower.startsWith("pm disable") || lower.startsWith("cmd package disable")) {
+            commandPackageTokens(lower).firstOrNull { it in corePackages }
+        } else {
+            null
         }
         if (disabledCore != null) {
             mark(RiskLevel.CRITICAL, "Attempts to disable core system package $disabledCore.", shouldBlock = true)
@@ -140,5 +155,17 @@ object ShizuleRiskScanner {
             RiskLevel.HIGH -> "Can break an app, reset state, or make device behavior worse until restored."
             RiskLevel.CRITICAL -> "Blocked because it could be destructive, root-only, or a security bypass attempt."
         }
+    }
+
+    private fun looksLikeSecurityBypass(command: String): Boolean {
+        val target = Regex("""\b(play\s*integrity|playintegrity|safetynet|banking|drm|anti[-_ ]?cheat)\b""")
+        val bypassVerb = Regex("""\b(bypass|spoof|hide|evade|defeat|pass|workaround)\b""")
+        return target.containsMatchIn(command) && bypassVerb.containsMatchIn(command)
+    }
+
+    private fun commandPackageTokens(command: String): List<String> {
+        return command.split(Regex("\\s+"))
+            .map { it.trim('\'', '"', ';', '&', '|') }
+            .filter { it.matches(Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+")) }
     }
 }

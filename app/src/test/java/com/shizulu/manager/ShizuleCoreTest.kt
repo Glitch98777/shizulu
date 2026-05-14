@@ -76,6 +76,19 @@ class ShizuleCoreTest {
     }
 
     @Test
+    fun scannerDoesNotCriticalFlagPlainBypassOrNonCoreAndroidPackageNames() {
+        val plainText = ShizuleRiskScanner.scanCommand("echo bypass animation limit")
+        val optionalAndroidPackage = ShizuleRiskScanner.scanCommand("pm disable-user --user 0 com.google.android.youtube")
+        val corePackage = ShizuleRiskScanner.scanCommand("pm disable-user --user 0 com.android.systemui")
+
+        assertFalse(plainText.blocked)
+        assertFalse(optionalAndroidPackage.blocked)
+        assertEquals(RiskLevel.HIGH, optionalAndroidPackage.level)
+        assertTrue(corePackage.blocked)
+        assertEquals(RiskLevel.CRITICAL, corePackage.level)
+    }
+
+    @Test
     fun restorePlannerCreatesSettingsProbe() {
         val probe = RestorePlanner.probeFor("settings put global animator_duration_scale 0.5")
 

@@ -1336,7 +1336,7 @@ class MainActivity : Activity() {
                 wirelessAdbConfigured()
             )
             addView(TextView(context).apply {
-                text = "${riskReport.level} risk | ${trust.label} | ${compatibility.label()}"
+                text = "${riskReport.level.label()} | ${trust.label} | ${compatibility.label()}"
                 textSize = 12f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(if (riskReport.level.atLeast(RiskLevel.HIGH)) COLORS.warning else COLORS.muted)
@@ -1677,7 +1677,7 @@ class MainActivity : Activity() {
 
                 addReviewLine("Tier", source?.tier ?: shizule.tier.ifBlank { "Community module" })
                 addReviewLine("Trust", "${trust.label}: ${trust.message}")
-                addReviewLine("Risk", "${riskReport.level}: ${riskReport.summary}")
+                addReviewLine("Risk", "${riskReport.level.sentenceLabel()}: ${riskReport.summary}")
                 addReviewLine("Compatibility", compatibilityDetails(compatibility))
                 addReviewLine("Compatibility scan", compatibilityReport.label())
                 addReviewLine("Actions", "${shizule.actions.size} action(s), ${commands.size} command(s)")
@@ -1737,7 +1737,7 @@ class MainActivity : Activity() {
                 })
                 riskReport.commandRisks.forEach { risk ->
                     addView(TextView(context).apply {
-                        text = "${risk.index}. ${risk.level}${if (risk.blocked) " BLOCKED" else ""}: ${risk.reasons.joinToString("; ")}\n${risk.command}"
+                        text = "${risk.index}. ${risk.level.sentenceLabel()}${if (risk.blocked) " blocked" else ""}: ${risk.reasons.joinToString("; ")}\n${risk.command}"
                         textSize = 12f
                         setTextColor(if (risk.blocked) COLORS.warning else COLORS.body)
                         setPadding(0, dp(4), 0, dp(4))
@@ -3003,7 +3003,7 @@ class MainActivity : Activity() {
                 append("Author: ").append(shizule.author.name).append('\n')
                 append("Tier: ").append(shizule.tier.ifBlank { "Community module" }).append('\n')
                 append("Trust: ").append(trust.label).append(" - ").append(trust.message).append('\n')
-                append("Risk: ").append(risk.level).append(" - ").append(risk.summary).append('\n')
+                append("Risk: ").append(risk.level.sentenceLabel()).append(" - ").append(risk.summary).append('\n')
                 append("Compatibility: ").append(compat.label()).append('\n')
                 (compat.reasons + compat.warnings).distinct().forEach { append("- ").append(it).append('\n') }
                 append("Restore: ").append(if (risk.restoreAvailable) if (risk.restorePartial) "Partial/snapshot" else "Declared" else "Not declared").append('\n')
@@ -3015,8 +3015,8 @@ class MainActivity : Activity() {
                 if (shizule.knownIssues.isNotEmpty()) append("\nKnown issues:\n").append(shizule.knownIssues.joinToString("\n") { "- $it" }).append('\n')
                 append("\nCommand risk:\n")
                 risk.commandRisks.forEach { commandRisk ->
-                    append(commandRisk.index).append(". ").append(commandRisk.level)
-                        .append(if (commandRisk.blocked) " BLOCKED" else "")
+                    append(commandRisk.index).append(". ").append(commandRisk.level.sentenceLabel())
+                        .append(if (commandRisk.blocked) " blocked" else "")
                         .append(": ").append(commandRisk.command).append('\n')
                     commandRisk.reasons.forEach { append("   - ").append(it).append('\n') }
                 }
@@ -3602,7 +3602,7 @@ class MainActivity : Activity() {
                 val probes = RestorePlanner.probesFor(action.commands)
                 append(actionIndex + 1).append(". ").append(shizule.name).append(" / ").append(action.label).append('\n')
                 append("   Module: ").append(shizule.id).append('\n')
-                append("   Risk: ").append(actionRisk.level).append(" - ").append(actionRisk.summary).append('\n')
+                append("   Risk: ").append(actionRisk.level.sentenceLabel()).append(" - ").append(actionRisk.summary).append('\n')
                 append("   Compatibility: ").append(compat.label()).append('\n')
                 (compat.reasons + compat.warnings).distinct().forEach { append("   - ").append(it).append('\n') }
                 append("   Restore: ").append(
@@ -3621,8 +3621,8 @@ class MainActivity : Activity() {
                 } else {
                     action.commands.forEachIndexed { commandIndex, command ->
                         val commandRisk = ShizuleRiskScanner.scanCommand(command.exec, commandIndex + 1)
-                        append("   ").append(commandIndex + 1).append(") ").append(commandRisk.level)
-                            .append(if (commandRisk.blocked) " BLOCKED" else "")
+                        append("   ").append(commandIndex + 1).append(") ").append(commandRisk.level.sentenceLabel())
+                            .append(if (commandRisk.blocked) " blocked" else "")
                             .append(" - ").append(commandRisk.reasons.joinToString("; ")).append('\n')
                         append("      $ ").append(command.exec).append('\n')
                         if (command.explanation.isNotBlank()) append("      ").append(command.explanation).append('\n')
