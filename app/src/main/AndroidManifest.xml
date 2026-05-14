@@ -62,6 +62,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".RootAccessRequestActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
         <service
             android:name=".WirelessAdbKeepAliveService"
             android:exported="false"

@@ -2,9 +2,14 @@ package com.shizulu.manager
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import android.os.Binder
 import android.os.Bundle
+import android.os.SystemClock
+import java.util.UUID
 
 class SuBridgeProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
@@ -20,6 +25,7 @@ class SuBridgeProvider : ContentProvider() {
             METHOD_EXEC -> {
                 if (!enabled) return bridgeBundle(false, "SU Bridge endpoint is disabled in Shizulu.", "")
                 val command = extras?.getString(EXTRA_COMMAND) ?: arg.orEmpty()
+                ensureCallerAllowed(context, METHOD_EXEC, command)?.let { return it }
                 val moduleId = extras?.getString(EXTRA_MODULE_ID).orEmpty().ifBlank { DEFAULT_MODULE_ID }
                 runCatching { executor.execute(moduleId, command) }
                     .fold(
@@ -33,6 +39,7 @@ class SuBridgeProvider : ContentProvider() {
                 val stdin = extras?.getString(EXTRA_STDIN).orEmpty()
                 val command = parseSuCommand(raw, stdin)
                     ?: return bridgeBundle(false, "Use su -c <command>, su 0 -c <command>, or pass stdin.", "")
+                ensureCallerAllowed(context, METHOD_SU, command)?.let { return it }
                 val moduleId = extras?.getString(EXTRA_MODULE_ID).orEmpty().ifBlank { DEFAULT_MODULE_ID }
                 runCatching { executor.execute(moduleId, command) }
                     .fold(
@@ -42,6 +49,69 @@ class SuBridgeProvider : ContentProvider() {
             }
             else -> bridgeBundle(false, "Unknown SU Bridge method: $method", "")
         }
+    }
+
+    private fun ensureCallerAllowed(context: Context, method: String, command: String): Bundle? {
+        val uid = Binder.getCallingUid()
+        if (uid == context.applicationInfo.uid || uid == ROOT_UID || uid == SHELL_UID) return null
+
+        val packages = context.packageManager.getPackagesForUid(uid).orEmpty().filter { it.isNotBlank() }
+        val packageName = packages.firstOrNull() ?: "uid:$uid"
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val allowed = prefs.getStringSet(KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
+        if (packages.any { it in allowed }) return null
+
+        val requestId = UUID.randomUUID().toString()
+        val decisionKey = "$KEY_ROOT_DECISION_PREFIX$requestId"
+        prefs.edit().putString(decisionKey, DECISION_PENDING).apply()
+
+        val label = resolveLabel(context, packageName)
+        val launched = runCatching {
+            context.startActivity(
+                Intent(context, RootAccessRequestActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .putExtra(RootAccessRequestActivity.EXTRA_REQUEST_ID, requestId)
+                    .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_NAME, packageName)
+                    .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_LABEL, label)
+                    .putExtra(RootAccessRequestActivity.EXTRA_METHOD, method)
+                    .putExtra(RootAccessRequestActivity.EXTRA_COMMAND, command.take(MAX_COMMAND_PREVIEW))
+            )
+        }.isSuccess
+
+        if (!launched) {
+            prefs.edit().remove(decisionKey).apply()
+            return bridgeBundle(false, "Could not show Shizulu root access prompt for $label.", "")
+        }
+
+        val deadline = SystemClock.elapsedRealtime() + ACCESS_REQUEST_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            when (prefs.getString(decisionKey, DECISION_PENDING)) {
+                DECISION_ALLOW -> {
+                    val updated = allowed.toMutableSet().apply { addAll(packages) }
+                    prefs.edit()
+                        .putStringSet(KEY_ALLOWED_ROOT_PACKAGES, updated)
+                        .remove(decisionKey)
+                        .apply()
+                    return null
+                }
+                DECISION_DENY -> {
+                    prefs.edit().remove(decisionKey).apply()
+                    return bridgeBundle(false, "Root access denied for $label.", "")
+                }
+            }
+            Thread.sleep(REQUEST_POLL_MS)
+        }
+
+        prefs.edit().remove(decisionKey).apply()
+        return bridgeBundle(false, "Root access prompt timed out for $label.", "")
+    }
+
+    private fun resolveLabel(context: Context, packageName: String): String {
+        if (packageName.startsWith("uid:")) return packageName
+        return runCatching {
+            val info = context.packageManager.getApplicationInfo(packageName, 0)
+            context.packageManager.getApplicationLabel(info).toString()
+        }.getOrDefault(packageName)
     }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
@@ -144,8 +214,18 @@ class SuBridgeProvider : ContentProvider() {
         const val EXTRA_COMMAND = "command"
         const val EXTRA_STDIN = "stdin"
         const val EXTRA_MODULE_ID = "moduleId"
+        const val KEY_ALLOWED_ROOT_PACKAGES = "su_bridge_allowed_root_packages"
+        const val KEY_ROOT_DECISION_PREFIX = "su_bridge_root_decision_"
+        const val DECISION_PENDING = "pending"
+        const val DECISION_ALLOW = "allow"
+        const val DECISION_DENY = "deny"
         private const val DEFAULT_MODULE_ID = "com.shizulu.external.su"
         private const val PREFS = "shizulu_settings"
+        private const val ROOT_UID = 0
+        private const val SHELL_UID = 2000
+        private const val ACCESS_REQUEST_TIMEOUT_MS = 30_000L
+        private const val REQUEST_POLL_MS = 250L
+        private const val MAX_COMMAND_PREVIEW = 600
         private val IGNORED_SU_FLAGS = setOf("-p", "-l", "-m", "-mm", "-M", "--mount-master", "--preserve-environment")
     }
 }

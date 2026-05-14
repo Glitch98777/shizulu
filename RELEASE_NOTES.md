@@ -25,6 +25,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - SU Bridge tools now include a ColorBlendr compatibility helper that detects ColorBlendr, explains why libsu root mode cannot be intercepted by a normal APK, and pushes ColorBlendr onto its Shizuku/rootless preference path through privileged ADB.
 - SU Bridge can now install Shizuku+-style shell interceptors under `/data/local/tmp/shizulu-bin` for `su`, `pm`, `am`, `settings`, `cmd`, and `appops`, plus a `shizulu-shell` PATH launcher for compatible tools.
 - Rootless Power Tools now has a direct Install Shell Interceptors button on the card.
+- SU Bridge now detects compatible app root-style requests, shows an Allow/Deny access prompt, remembers approved packages, and only executes routed ADB/Shizuku commands after approval.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
