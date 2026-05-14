@@ -989,7 +989,8 @@ class MainActivity : Activity() {
     }
 
     private fun storeItemView(item: StoreItem): View {
-        val installed = store.list().any { it.id == item.id }
+        val installedShizule = store.list().firstOrNull { it.id == item.id }
+        val actionLabel = storeActionLabel(item, installedShizule)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(15), dp(16), dp(14))
@@ -1051,10 +1052,21 @@ class MainActivity : Activity() {
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(compactButton(if (installed) "Reinstall" else "Install", filled = true) { installStoreItem(item) })
+                addView(compactButton(actionLabel, filled = actionLabel != "Already up to date") {
+                    if (actionLabel == "Already up to date") {
+                        Toast.makeText(this@MainActivity, "${item.name} is already up to date.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        installStoreItem(item)
+                    }
+                })
                 addView(compactButton("Details", filled = false) { showStoreItemDetails(item) }, rowGapParams())
             })
         }
+    }
+
+    private fun storeActionLabel(item: StoreItem, installed: Shizule?): String {
+        if (installed == null) return "Install"
+        return if (compareVersions(item.version, installed.version) > 0) "Update" else "Already up to date"
     }
 
     private fun refreshProfiles(shizules: List<Shizule>) {
@@ -1420,6 +1432,7 @@ class MainActivity : Activity() {
                 .onSuccess { (raw, shizule) ->
                     mainHandler.post {
                         installTrusted(raw, shizule)
+                        refreshStoreList()
                     }
                 }
                 .onFailure {
@@ -3217,6 +3230,32 @@ class MainActivity : Activity() {
 
     private fun String.urlEncode(): String {
         return URLEncoder.encode(this, "UTF-8")
+    }
+
+    private fun compareVersions(left: String, right: String): Int {
+        val leftParts = versionParts(left)
+        val rightParts = versionParts(right)
+        val max = maxOf(leftParts.size, rightParts.size)
+        for (index in 0 until max) {
+            val leftPart = leftParts.getOrElse(index) { "0" }
+            val rightPart = rightParts.getOrElse(index) { "0" }
+            val leftNumber = leftPart.toLongOrNull()
+            val rightNumber = rightPart.toLongOrNull()
+            val compare = if (leftNumber != null && rightNumber != null) {
+                leftNumber.compareTo(rightNumber)
+            } else {
+                leftPart.compareTo(rightPart, ignoreCase = true)
+            }
+            if (compare != 0) return compare
+        }
+        return 0
+    }
+
+    private fun versionParts(version: String): List<String> {
+        return version.trim()
+            .split(Regex("[^A-Za-z0-9]+"))
+            .filter { it.isNotBlank() }
+            .ifEmpty { listOf("0") }
     }
 
     private fun String.isSafeShellToken(): Boolean {
