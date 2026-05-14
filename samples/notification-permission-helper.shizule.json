@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.template.notification_permission_helper",
+  "name": "Notification Permission Helper",
+  "version": "1.0.0",
+  "description": "Grant or revoke POST_NOTIFICATIONS for a selected app when Android allows shell grants.",
+  "tier": "Reviewed module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["package_manager", "permissions", "restore"],
+  "variables": [
+    {
+      "name": "package",
+      "label": "Target package",
+      "type": "package",
+      "default": "com.example.app",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "grant_notifications",
+      "label": "Grant notifications",
+      "commands": [
+        {
+          "exec": "pm grant {{package}} android.permission.POST_NOTIFICATIONS"
+        }
+      ]
+    },
+    {
+      "id": "revoke_notifications",
+      "label": "Revoke notifications",
+      "commands": [
+        {
+          "exec": "pm revoke {{package}} android.permission.POST_NOTIFICATIONS"
+        }
+      ]
+    }
+  ]
+}

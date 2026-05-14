@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.template.display_debugging",
+  "name": "Display Debugging",
+  "version": "1.0.0",
+  "description": "Read display size, density, brightness, and refresh information without changing settings.",
+  "tier": "Official Shizulu module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["diagnostics"],
+  "actions": [
+    {
+      "id": "inspect_display",
+      "label": "Inspect Display",
+      "commands": [
+        {
+          "exec": "wm size"
+        },
+        {
+          "exec": "wm density"
+        },
+        {
+          "exec": "settings get system screen_brightness"
+        },
+        {
+          "exec": "dumpsys display | grep -E 'mBaseDisplayInfo|DisplayDeviceInfo|refreshRate' | head -n 40"
+        }
+      ]
+    }
+  ]
+}

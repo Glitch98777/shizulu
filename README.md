@@ -10,6 +10,7 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 
 - Import `.json` shizules from Android's file picker.
 - Browse the Shizule Store from the bottom navigation, install public shizules, and submit new community shizules through GitHub review.
+- Build modules with a Visual Shizule Builder, or start from the public Template Gallery.
 - Install and remove shizules from private app storage.
 - Request Shizuku permission and bind a Shizuku `UserService`.
 - Run shizule commands as the ADB/shell identity.
@@ -33,6 +34,14 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
   "name": "My Shizule",
   "version": "1.0.0",
   "description": "Short description shown in Shizulu.",
+  "tier": "Community module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["system_settings", "restore"],
   "signature": {
     "author": "Example Author",
     "sha256": "optional-content-digest"
@@ -69,6 +78,14 @@ Keep shizules readable and only install files you trust. Shizulu intentionally r
 
 The optional `signature` metadata is informational for now; it is a trust signal for authorship, not cryptographic verification yet.
 
+Optional Store metadata helps Shizulu warn before install:
+
+- `compatibility.worksOn`: manufacturer families such as `pixel` or `samsung`.
+- `compatibility.androidMin` / `androidMax`: supported Android API range.
+- `compatibility.requires`: supported backends such as `shizuku` or `adb`.
+- `tier`: `Community module`, `Reviewed module`, `Verified author`, or `Official Shizulu module`.
+- `permissions`: declared capability tags such as `system_settings`, `package_manager`, `appops`, `permissions`, `rro`, `app_data`, `diagnostics`, and `restore`.
+
 ## Manager features
 
 - Dry Run mode logs every command that would run without changing the device.
@@ -80,6 +97,10 @@ The optional `signature` metadata is informational for now; it is a trust signal
 ## Included Samples
 
 - `animation-tuner.shizule.json`: Off, fast, normal, and relaxed animation presets.
+- `display-debugging.shizule.json`: Read-only display size, density, brightness, and refresh checks.
+- `appops-viewer.shizule.json`: Dynamic package picker plus AppOps inspection.
+- `screen-timeout-presets.shizule.json`: Working screen timeout presets with restore.
+- `notification-permission-helper.shizule.json`: Grant/revoke Android notification permission for a selected app.
 - `display-comfort-pack.shizule.json`: Calmer display settings and restore actions.
 - `light-debloat-manager.shizule.json`: Conservative optional Google/Pixel app disable/restore profile for user 0.
 - `shizulu-capability-booster.shizule.json`: Attempts legitimate ADB-level grants and app-ops for Shizulu.
@@ -87,9 +108,9 @@ The optional `signature` metadata is informational for now; it is a trust signal
 
 ## Shizule Store
 
-The in-app Store reads the public index at `samples/store-index.json`. Each entry points to a raw shizule JSON URL and includes author, risk, tags, version, and description metadata.
+The in-app Store reads the public index at `samples/store-index.json`. Each entry points to a raw shizule JSON URL and includes author, risk, tags, version, tier, compatibility, permissions, template, and description metadata.
 
-To publish a shizule, use Store > Create, edit the JSON, then tap Publish. Shizulu installs it, makes it visible in your local Store immediately, and opens a prefilled GitHub submission. The public Store also reads open `[Store]` GitHub issues, so community submissions can appear from GitHub without waiting for a manual index merge.
+To publish a shizule, use Store > Visual Builder or JSON Editor, then tap Publish. Shizulu installs it, makes it visible in your local Store immediately, and opens a prefilled GitHub submission. The public Store also reads open `[Store]` GitHub issues, so community submissions can appear from GitHub without waiting for a manual index merge.
 
 Community Store submissions may paste full JSON or link to a raw `.shizule.json` file in this repository. The expanded low/medium/high risk module pack is published through GitHub submissions instead of being hardcoded into the curated baseline index.
 

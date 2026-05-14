@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.template.appops_viewer",
+  "name": "AppOps Viewer",
+  "version": "1.0.0",
+  "description": "Pick an app and inspect its AppOps state through shell privileges.",
+  "tier": "Official Shizulu module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["appops", "diagnostics"],
+  "variables": [
+    {
+      "name": "package",
+      "label": "Target package",
+      "type": "package",
+      "default": "com.example.app",
+      "required": true
+    }
+  ],
+  "actions": [
+    {
+      "id": "view_appops",
+      "label": "View AppOps",
+      "commands": [
+        {
+          "exec": "cmd appops get {{package}}"
+        }
+      ]
+    }
+  ]
+}

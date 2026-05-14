@@ -60,7 +60,18 @@ private data class StoreItem(
     val url: String,
     val tags: List<String>,
     val risk: String,
+    val tier: String = "Community module",
+    val compatibility: ShizuleCompatibility = ShizuleCompatibility(),
+    val permissions: List<String> = emptyList(),
+    val template: Boolean = false,
     val rawJson: String = ""
+)
+
+private data class ShizuleTemplate(
+    val name: String,
+    val description: String,
+    val risk: String,
+    val rawJson: String
 )
 
 class MainActivity : Activity() {
@@ -504,7 +515,10 @@ class MainActivity : Activity() {
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(secondaryButton("Create") { showShizuleMaker() }, LinearLayout.LayoutParams(-1, dp(44)))
+                addView(secondaryButton("Visual Builder") { showVisualShizuleBuilder() }, LinearLayout.LayoutParams(0, dp(44), 1f))
+                addView(secondaryButton("Templates") { showTemplateGallery() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                    leftMargin = dp(10)
+                })
             })
         }
     }
@@ -674,10 +688,11 @@ class MainActivity : Activity() {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(compactButton("Install Tests", filled = false) { installBuiltInTestShizules() }, LinearLayout.LayoutParams(0, dp(42), 1f))
-                addView(compactButton("Module Maker", filled = true) { showShizuleMaker() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                addView(compactButton("Visual Builder", filled = true) { showVisualShizuleBuilder() }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
                     leftMargin = dp(10)
                 })
             })
+            addView(compactButton("JSON Editor", filled = false) { showShizuleMaker() }, spacedParams(top = 10))
         }
     }
 
@@ -1038,6 +1053,8 @@ class MainActivity : Activity() {
 
             val meta = buildList {
                 if (item.risk.isNotBlank()) add("Risk: ${item.risk}")
+                add(item.tier.ifBlank { "Community module" })
+                compatibilitySummary(item.compatibility)?.let(::add)
                 if (item.tags.isNotEmpty()) add(item.tags.joinToString(" • "))
             }.joinToString("   ")
             if (meta.isNotBlank()) {
@@ -1056,7 +1073,7 @@ class MainActivity : Activity() {
                     if (actionLabel == "Already up to date") {
                         Toast.makeText(this@MainActivity, "${item.name} is already up to date.", Toast.LENGTH_SHORT).show()
                     } else {
-                        installStoreItem(item)
+                        prepareStoreInstall(item)
                     }
                 })
                 addView(compactButton("Details", filled = false) { showStoreItemDetails(item) }, rowGapParams())
@@ -1350,6 +1367,9 @@ class MainActivity : Activity() {
                         url = sourceUrl ?: issue.optString("html_url"),
                         tags = listOf("community", "auto-published"),
                         risk = extractIssueField(body, "Risk") ?: "Community",
+                        tier = extractIssueField(body, "Tier") ?: shizule.tier.ifBlank { "Community module" },
+                        compatibility = shizule.compatibility,
+                        permissions = shizule.permissions.ifEmpty { inferPermissionKeys(shizule.actions.flatMap { action -> action.commands }.map { command -> command.exec }) },
                         rawJson = if (sourceUrl == null) raw else ""
                     )
                 )
@@ -1383,6 +1403,8 @@ class MainActivity : Activity() {
 
     private fun parseStoreItem(obj: JSONObject): StoreItem {
         val tags = obj.optJSONArray("tags") ?: JSONArray()
+        val raw = obj.optString("rawJson")
+        val rawShizule = raw.takeIf { it.isNotBlank() }?.let { runCatching { Shizule.fromJson(it) }.getOrNull() }
         return StoreItem(
             id = obj.optString("id").trim(),
             name = obj.optString("name", obj.optString("id", "Untitled Shizule")).trim().take(80),
@@ -1393,8 +1415,35 @@ class MainActivity : Activity() {
             tags = buildList {
                 for (index in 0 until tags.length()) add(tags.optString(index).take(28))
             }.filter { it.isNotBlank() },
-            risk = obj.optString("risk", "Review").trim().take(32)
+            risk = obj.optString("risk", "Review").trim().take(32),
+            tier = obj.optString("tier", rawShizule?.tier?.ifBlank { null } ?: "Community module").trim().take(48),
+            compatibility = parseCompatibilityObject(obj.optJSONObject("compatibility")) ?: rawShizule?.compatibility ?: ShizuleCompatibility(),
+            permissions = parseStringArray(obj.optJSONArray("permissions"), 64).ifEmpty { rawShizule?.permissions.orEmpty() },
+            template = obj.optBoolean("template", false),
+            rawJson = raw
         )
+    }
+
+    private fun parseCompatibilityObject(obj: JSONObject?): ShizuleCompatibility? {
+        if (obj == null) return null
+        val min = if (obj.has("androidMin")) obj.optInt("androidMin") else null
+        val max = if (obj.has("androidMax")) obj.optInt("androidMax") else null
+        return ShizuleCompatibility(
+            worksOn = parseStringArray(obj.optJSONArray("worksOn"), 32).map { it.lowercase(Locale.US) },
+            androidMin = min?.takeIf { it > 0 },
+            androidMax = max?.takeIf { it > 0 },
+            requires = parseStringArray(obj.optJSONArray("requires"), 32).map { it.lowercase(Locale.US) }
+        )
+    }
+
+    private fun parseStringArray(array: JSONArray?, maxLength: Int): List<String> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val value = array.optString(index).trim().take(maxLength)
+                if (value.isNotBlank()) add(value)
+            }
+        }
     }
 
     private fun builtInStoreItems(): List<StoreItem> {
@@ -1406,8 +1455,12 @@ class MainActivity : Activity() {
                 description = "Off, fast, normal, and relaxed animation presets using shell-accessible settings.",
                 author = "Shizulu",
                 url = "$SHIZULE_STORE_RAW_BASE/animation-tuner.shizule.json",
-                tags = listOf("settings", "animations"),
-                risk = "Low"
+                tags = listOf("settings", "animations", "template"),
+                risk = "Low",
+                tier = "Official Shizulu module",
+                compatibility = defaultStoreCompatibility(),
+                permissions = listOf("system_settings", "restore"),
+                template = true
             ),
             StoreItem(
                 id = "com.shizulu.sample.display_comfort_pack",
@@ -1417,7 +1470,10 @@ class MainActivity : Activity() {
                 author = "Shizulu",
                 url = "$SHIZULE_STORE_RAW_BASE/display-comfort-pack.shizule.json",
                 tags = listOf("display", "comfort"),
-                risk = "Low"
+                risk = "Low",
+                tier = "Official Shizulu module",
+                compatibility = defaultStoreCompatibility(),
+                permissions = listOf("system_settings", "restore")
             ),
             StoreItem(
                 id = "com.shizulu.sample.light_debloat_manager",
@@ -1427,14 +1483,26 @@ class MainActivity : Activity() {
                 author = "Shizulu",
                 url = "$SHIZULE_STORE_RAW_BASE/light-debloat-manager.shizule.json",
                 tags = listOf("debloat", "packages"),
-                risk = "Medium"
+                risk = "Medium",
+                tier = "Reviewed module",
+                compatibility = defaultStoreCompatibility(),
+                permissions = listOf("package_manager", "restore")
             )
         )
     }
 
-    private fun installStoreItem(item: StoreItem) {
-        appendLog("Store install started: ${item.id}")
-        Toast.makeText(this, if (item.rawJson.isBlank()) "Downloading ${item.name}..." else "Installing ${item.name}...", Toast.LENGTH_SHORT).show()
+    private fun defaultStoreCompatibility(): ShizuleCompatibility {
+        return ShizuleCompatibility(
+            worksOn = listOf("pixel", "samsung"),
+            androidMin = 13,
+            androidMax = 16,
+            requires = listOf("shizuku", "adb")
+        )
+    }
+
+    private fun prepareStoreInstall(item: StoreItem) {
+        appendLog("Store install preview started: ${item.id}")
+        Toast.makeText(this, if (item.rawJson.isBlank()) "Downloading ${item.name}..." else "Preparing ${item.name}...", Toast.LENGTH_SHORT).show()
         executor.execute {
             runCatching {
                 val raw = item.rawJson.ifBlank { httpGet(item.url) }
@@ -1446,8 +1514,17 @@ class MainActivity : Activity() {
             }
                 .onSuccess { (raw, shizule) ->
                     mainHandler.post {
-                        installTrusted(raw, shizule)
-                        refreshStoreList()
+                        showInstallReview(
+                            raw = raw,
+                            shizule = shizule,
+                            source = item.copy(
+                                compatibility = item.compatibility.takeUnless { it == ShizuleCompatibility() } ?: shizule.compatibility,
+                                permissions = item.permissions.ifEmpty { shizule.permissions.ifEmpty { inferPermissionKeys(shizule.actions.flatMap { action -> action.commands }.map { command -> command.exec }) } }
+                            )
+                        ) {
+                            installTrusted(raw, shizule)
+                            refreshStoreList()
+                        }
                     }
                 }
                 .onFailure {
@@ -1468,11 +1545,92 @@ class MainActivity : Activity() {
                 append("Version: ").append(item.version).append('\n')
                 append("Author: ").append(item.author).append('\n')
                 append("Risk: ").append(item.risk.ifBlank { "Review" }).append('\n')
+                append("Tier: ").append(item.tier.ifBlank { "Community module" }).append('\n')
+                append("Compatibility: ").append(compatibilityDetails(item.compatibility)).append('\n')
+                val permissionLines = permissionStatements(item.permissions)
+                if (permissionLines.isNotEmpty()) {
+                    append("Module permissions:\n")
+                    permissionLines.forEach { append("- ").append(it).append('\n') }
+                }
                 if (item.tags.isNotEmpty()) append("Tags: ").append(item.tags.joinToString(", ")).append('\n')
                 append('\n').append(item.description.ifBlank { "No description provided." })
                 append("\n\nSource:\n").append(item.url)
             }
         )
+    }
+
+    private fun showInstallReview(raw: String, shizule: Shizule, source: StoreItem?, onInstall: () -> Unit) {
+        val commands = shizule.actions.flatMap { action -> action.commands }.map { command -> command.exec }
+        val permissionKeys = source?.permissions.orEmpty()
+            .ifEmpty { shizule.permissions }
+            .ifEmpty { inferPermissionKeys(commands) }
+        val compatibility = source?.compatibility?.takeUnless { it == ShizuleCompatibility() } ?: shizule.compatibility
+
+        val content = ScrollView(this).apply {
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(8), dp(18), dp(2))
+
+                addView(TextView(context).apply {
+                    text = "${shizule.name}\n${shizule.id}"
+                    textSize = 16f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    setPadding(0, 0, 0, dp(12))
+                })
+
+                addReviewLine("Tier", source?.tier ?: shizule.tier.ifBlank { "Community module" })
+                addReviewLine("Compatibility", compatibilityDetails(compatibility))
+                addReviewLine("Actions", "${shizule.actions.size} action(s), ${commands.size} command(s)")
+
+                val statements = permissionStatements(permissionKeys)
+                addView(TextView(context).apply {
+                    text = "Module permissions"
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    setPadding(0, dp(12), 0, dp(6))
+                })
+                statements.ifEmpty { listOf("This module only declares basic shell execution.") }.forEach { statement ->
+                    addView(TextView(context).apply {
+                        text = "- $statement"
+                        textSize = 13f
+                        setTextColor(COLORS.body)
+                        setPadding(0, dp(3), 0, dp(3))
+                    })
+                }
+
+                val compatibilityWarnings = compatibilityWarnings(compatibility)
+                if (compatibilityWarnings.isNotEmpty()) {
+                    addView(TextView(context).apply {
+                        text = compatibilityWarnings.joinToString("\n")
+                        textSize = 13f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(COLORS.warning)
+                        setPadding(0, dp(12), 0, 0)
+                    })
+                }
+            })
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Review install")
+            .setView(content)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Install") { _, _ ->
+                appendLog("Install approved: ${shizule.name} (${shizule.id})")
+                onInstall()
+            }
+            .show()
+    }
+
+    private fun LinearLayout.addReviewLine(label: String, value: String) {
+        addView(TextView(context).apply {
+            text = "$label: $value"
+            textSize = 13f
+            setTextColor(COLORS.body)
+            setPadding(0, dp(3), 0, dp(3))
+        })
     }
 
     private fun publishCreatedShizule(raw: String, shizule: Shizule) {
@@ -1497,6 +1655,9 @@ class MainActivity : Activity() {
             put("description", shizule.description)
             put("author", "You")
             put("risk", "Review")
+            put("tier", shizule.tier.ifBlank { "Community module" })
+            put("compatibility", compatibilityJson(shizule.compatibility))
+            put("permissions", JSONArray().apply { shizule.permissions.forEach(::put) })
             put("url", "local://${shizule.id}")
             put("rawJson", raw)
             put("tags", JSONArray().put("created").put("local"))
@@ -1528,6 +1689,8 @@ class MainActivity : Activity() {
             append("Version: ").append(shizule.version).append("\n\n")
             append("Description:\n").append(shizule.description.ifBlank { "No description provided." }).append("\n\n")
             append("Risk: Review\n\n")
+            append("Tier: ").append(shizule.tier.ifBlank { "Community module" }).append("\n\n")
+            append("Compatibility: ").append(compatibilityDetails(shizule.compatibility)).append("\n\n")
             append("```json\n").append(raw).append("\n```\n")
         }
         return "$SHIZULE_STORE_SUBMIT_URL?title=${title.urlEncode()}&labels=shizule-store&body=${body.urlEncode()}"
@@ -1588,7 +1751,13 @@ class MainActivity : Activity() {
 
         return runCatching { Shizule.fromJson(raw) }
             .onSuccess { shizule ->
-                installTrusted(raw, shizule, refreshAfterInstall, showToast)
+                if (showToast && refreshAfterInstall) {
+                    showInstallReview(raw, shizule, null) {
+                        installTrusted(raw, shizule, refreshAfterInstall, showToast)
+                    }
+                } else {
+                    installTrusted(raw, shizule, refreshAfterInstall, showToast)
+                }
             }
             .onFailure {
                 appendLog("Install failed: ${it.message ?: "invalid shizule"}")
@@ -1631,9 +1800,288 @@ class MainActivity : Activity() {
         refreshModules()
     }
 
+    private fun showTemplateGallery() {
+        val storeTemplates = visibleStoreItems().filter { it.template || "template" in it.tags }
+        val localTemplates = builtInTemplateShizules()
+        val content = ScrollView(this).apply {
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(6), dp(18), dp(8))
+
+                addView(TextView(context).apply {
+                    text = "Safe starter modules you can install, edit, or publish from."
+                    textSize = 13f
+                    setTextColor(COLORS.muted)
+                    setPadding(0, 0, 0, dp(10))
+                })
+
+                storeTemplates.forEach { item ->
+                    addView(templateStoreRow(item), spacedParams(top = 8))
+                }
+                localTemplates.forEach { template ->
+                    addView(templateRawRow(template), spacedParams(top = 8))
+                }
+            })
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Template Gallery")
+            .setView(content)
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun templateStoreRow(item: StoreItem): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+            addView(TextView(context).apply {
+                text = item.name
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+            addView(TextView(context).apply {
+                text = item.description
+                textSize = 13f
+                setTextColor(COLORS.body)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+            addView(compactButton("Install Template", filled = true) { prepareStoreInstall(item) }, LinearLayout.LayoutParams(-1, dp(42)))
+        }
+    }
+
+    private fun templateRawRow(template: ShizuleTemplate): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+            addView(TextView(context).apply {
+                text = template.name
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(COLORS.ink)
+            })
+            addView(TextView(context).apply {
+                text = "${template.risk} risk | ${template.description}"
+                textSize = 13f
+                setTextColor(COLORS.body)
+                setPadding(0, dp(5), 0, dp(10))
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("Install", filled = true) {
+                    val shizule = Shizule.fromJson(template.rawJson)
+                    showInstallReview(template.rawJson, shizule, null) {
+                        installTrusted(template.rawJson, shizule)
+                    }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(compactButton("Edit", filled = false) {
+                    showShizuleMaker(template.rawJson)
+                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(8) })
+            })
+        }
+    }
+
+    private fun showVisualShizuleBuilder() {
+        val nameInput = builderInput("Name", "My Shizule")
+        val idInput = builderInput("ID", "com.example.my_shizule")
+        val versionInput = builderInput("Version", "1.0.0")
+        val descriptionInput = builderInput("Description", "Describe what this shizule does.")
+        val worksOnInput = builderInput("Works on", "pixel,samsung")
+        val minInput = builderInput("Android min", "13")
+        val maxInput = builderInput("Android max", "16")
+
+        val requiresShizuku = android.widget.CheckBox(this).apply {
+            text = "Requires Shizuku"
+            setTextColor(COLORS.ink)
+            isChecked = true
+        }
+        val requiresAdb = android.widget.CheckBox(this).apply {
+            text = "Works with Wireless ADB"
+            setTextColor(COLORS.ink)
+            isChecked = true
+        }
+        val permissionChecks = listOf(
+            "system_settings" to android.widget.CheckBox(this).apply { text = "Changes system settings"; setTextColor(COLORS.ink) },
+            "package_manager" to android.widget.CheckBox(this).apply { text = "Package manager commands"; setTextColor(COLORS.ink) },
+            "appops" to android.widget.CheckBox(this).apply { text = "AppOps commands"; setTextColor(COLORS.ink) },
+            "restore" to android.widget.CheckBox(this).apply { text = "Has restore support"; setTextColor(COLORS.ink); isChecked = true },
+            "diagnostics" to android.widget.CheckBox(this).apply { text = "Read-only diagnostics"; setTextColor(COLORS.ink) }
+        )
+
+        val actionsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun addAction(label: String = "Run", commands: String = "echo Shizulu builder module") {
+            actionsContainer.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+                addView(builderInput("Action label", label))
+                addView(builderInput("Commands, one per line", commands).apply {
+                    minLines = 4
+                    gravity = Gravity.START or Gravity.TOP
+                    inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                }, spacedParams(top = 8))
+            }, spacedParams(top = 8))
+        }
+        addAction("Inspect", "id\ngetprop ro.product.model\nsettings get global window_animation_scale")
+        addAction("Restore", "echo Restore command goes here")
+
+        lateinit var dialog: android.app.AlertDialog
+        val content = ScrollView(this).apply {
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(4), dp(18), 0)
+                addView(TextView(context).apply {
+                    text = "Build a real shizule from fields. Commands are still shell commands, but Shizulu writes the JSON for you."
+                    textSize = 13f
+                    setTextColor(COLORS.muted)
+                    setPadding(0, 0, 0, dp(10))
+                })
+                addView(nameInput)
+                addView(idInput, spacedParams(top = 8))
+                addView(versionInput, spacedParams(top = 8))
+                addView(descriptionInput, spacedParams(top = 8))
+                addView(worksOnInput, spacedParams(top = 8))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(minInput, LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(maxInput, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
+                }, spacedParams(top = 8))
+                addView(requiresShizuku, spacedParams(top = 8))
+                addView(requiresAdb)
+                permissionChecks.forEach { (_, check) -> addView(check) }
+                addView(TextView(context).apply {
+                    text = "Actions"
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    setPadding(0, dp(12), 0, dp(2))
+                })
+                addView(actionsContainer)
+                addView(compactButton("Add Action", filled = false) { addAction("New Action", "echo Hello from Shizulu") }, spacedParams(top = 10))
+                addView(compactButton("Publish", filled = true) {
+                    runCatching {
+                        val raw = buildVisualShizuleJson(nameInput, idInput, versionInput, descriptionInput, worksOnInput, minInput, maxInput, requiresShizuku, requiresAdb, permissionChecks, actionsContainer)
+                        raw to Shizule.fromJson(raw)
+                    }.onSuccess { (raw, shizule) ->
+                        showInstallReview(raw, shizule, null) {
+                            installTrusted(raw, shizule)
+                            publishCreatedShizule(raw, shizule)
+                            dialog.dismiss()
+                        }
+                    }.onFailure { showOutput("Visual Builder", it.message ?: "Could not build shizule.") }
+                }, spacedParams(top = 10))
+            })
+        }
+
+        dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Visual Shizule Builder")
+            .setView(content)
+            .setNegativeButton("Close", null)
+            .setNeutralButton("JSON Editor", null)
+            .setPositiveButton("Install", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                runCatching {
+                    buildVisualShizuleJson(nameInput, idInput, versionInput, descriptionInput, worksOnInput, minInput, maxInput, requiresShizuku, requiresAdb, permissionChecks, actionsContainer)
+                }.onSuccess { raw ->
+                    showShizuleMaker(raw)
+                }.onFailure { showOutput("Visual Builder", it.message ?: "Could not build shizule.") }
+            }
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                runCatching {
+                    val raw = buildVisualShizuleJson(nameInput, idInput, versionInput, descriptionInput, worksOnInput, minInput, maxInput, requiresShizuku, requiresAdb, permissionChecks, actionsContainer)
+                    raw to Shizule.fromJson(raw)
+                }.onSuccess { (raw, shizule) ->
+                    showInstallReview(raw, shizule, null) {
+                        installTrusted(raw, shizule)
+                        dialog.dismiss()
+                    }
+                }.onFailure { showOutput("Visual Builder", it.message ?: "Could not build shizule.") }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun builderInput(hint: String, value: String): EditText {
+        return EditText(this).apply {
+            setText(value)
+            setHint(hint)
+            textSize = 13f
+            setTextColor(COLORS.ink)
+            setHintTextColor(COLORS.muted)
+            setPadding(dp(12), 0, dp(12), 0)
+            minHeight = dp(44)
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+    }
+
+    private fun buildVisualShizuleJson(
+        nameInput: EditText,
+        idInput: EditText,
+        versionInput: EditText,
+        descriptionInput: EditText,
+        worksOnInput: EditText,
+        minInput: EditText,
+        maxInput: EditText,
+        requiresShizuku: android.widget.CheckBox,
+        requiresAdb: android.widget.CheckBox,
+        permissionChecks: List<Pair<String, android.widget.CheckBox>>,
+        actionsContainer: LinearLayout
+    ): String {
+        val actions = JSONArray()
+        for (index in 0 until actionsContainer.childCount) {
+            val row = actionsContainer.getChildAt(index) as? LinearLayout ?: continue
+            val label = (row.getChildAt(0) as? EditText)?.text?.toString()?.trim().orEmpty().ifBlank { "Action ${index + 1}" }
+            val commandsText = (row.getChildAt(1) as? EditText)?.text?.toString().orEmpty()
+            val commands = commandsText.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+            if (commands.isEmpty()) continue
+            actions.put(JSONObject().apply {
+                put("id", label.lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "action_$index" })
+                put("label", label.take(64))
+                put("commands", JSONArray().apply {
+                    commands.forEach { command -> put(JSONObject().apply { put("exec", command) }) }
+                })
+            })
+        }
+        require(actions.length() > 0) { "Add at least one action with one command." }
+
+        return JSONObject().apply {
+            put("schema", 1)
+            put("id", idInput.text.toString().trim())
+            put("name", nameInput.text.toString().trim().ifBlank { "My Shizule" })
+            put("version", versionInput.text.toString().trim().ifBlank { "1.0.0" })
+            put("description", descriptionInput.text.toString().trim())
+            put("tier", "Community module")
+            put("compatibility", JSONObject().apply {
+                put("worksOn", JSONArray().apply {
+                    worksOnInput.text.toString().split(',').map { it.trim().lowercase(Locale.US) }.filter { it.isNotBlank() }.forEach(::put)
+                })
+                minInput.text.toString().trim().toIntOrNull()?.let { put("androidMin", it) }
+                maxInput.text.toString().trim().toIntOrNull()?.let { put("androidMax", it) }
+                put("requires", JSONArray().apply {
+                    if (requiresShizuku.isChecked) put("shizuku")
+                    if (requiresAdb.isChecked) put("adb")
+                })
+            })
+            put("permissions", JSONArray().apply {
+                permissionChecks.filter { it.second.isChecked }.forEach { put(it.first) }
+            })
+            put("actions", actions)
+        }.toString(2)
+    }
+
     private fun showShizuleMaker() {
+        showShizuleMaker(blankShizuleTemplate())
+    }
+
+    private fun showShizuleMaker(initialJson: String) {
         val editor = EditText(this).apply {
-            setText(blankShizuleTemplate())
+            setText(initialJson)
             typeface = Typeface.MONOSPACE
             textSize = 12f
             gravity = Gravity.START or Gravity.TOP
@@ -1676,8 +2124,10 @@ class MainActivity : Activity() {
                 val raw = editor.text.toString()
                 runCatching { Shizule.fromJson(raw) }
                     .onSuccess { shizule ->
-                        installTrusted(raw, shizule)
-                        dialog.dismiss()
+                        showInstallReview(raw, shizule, null) {
+                            installTrusted(raw, shizule)
+                            dialog.dismiss()
+                        }
                     }
                     .onFailure {
                         val message = it.message ?: "Invalid shizule JSON"
@@ -1689,9 +2139,11 @@ class MainActivity : Activity() {
                 val raw = editor.text.toString()
                 runCatching { Shizule.fromJson(raw) }
                     .onSuccess { shizule ->
-                        installTrusted(raw, shizule)
-                        publishCreatedShizule(raw, shizule)
-                        dialog.dismiss()
+                        showInstallReview(raw, shizule, null) {
+                            installTrusted(raw, shizule)
+                            publishCreatedShizule(raw, shizule)
+                            dialog.dismiss()
+                        }
                     }
                     .onFailure {
                         val message = it.message ?: "Invalid shizule JSON"
@@ -2415,6 +2867,150 @@ class MainActivity : Activity() {
             normalized.contains("package")
     }
 
+    private fun builtInTemplateShizules(): List<ShizuleTemplate> {
+        fun raw(
+            id: String,
+            name: String,
+            description: String,
+            risk: String,
+            permissions: List<String>,
+            actions: List<Pair<String, List<String>>>,
+            variables: JSONArray = JSONArray()
+        ): String {
+            return JSONObject().apply {
+                put("schema", 1)
+                put("id", id)
+                put("name", name)
+                put("version", "1.0.0")
+                put("description", description)
+                put("tier", "Official Shizulu module")
+                put("compatibility", JSONObject().apply {
+                    put("worksOn", JSONArray().put("pixel").put("samsung"))
+                    put("androidMin", 13)
+                    put("androidMax", 16)
+                    put("requires", JSONArray().put("shizuku").put("adb"))
+                })
+                put("permissions", JSONArray().apply { permissions.forEach(::put) })
+                if (variables.length() > 0) put("variables", variables)
+                put("actions", JSONArray().apply {
+                    actions.forEachIndexed { index, action ->
+                        put(JSONObject().apply {
+                            put("id", action.first.lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { "action_$index" })
+                            put("label", action.first)
+                            put("commands", JSONArray().apply {
+                                action.second.forEach { command -> put(JSONObject().apply { put("exec", command) }) }
+                            })
+                        })
+                    }
+                })
+            }.toString(2)
+        }
+
+        val packageVariable = JSONArray().put(JSONObject().apply {
+            put("name", "package")
+            put("label", "Target package")
+            put("type", "package")
+            put("default", "com.example.app")
+            put("required", true)
+        })
+
+        return listOf(
+            ShizuleTemplate(
+                "Animation Tuner",
+                "Switch animation speed without root.",
+                "Low",
+                raw(
+                    "com.shizulu.template.animation_tuner",
+                    "Animation Tuner Template",
+                    "Safe animation scale presets for testing settings writes.",
+                    "Low",
+                    listOf("system_settings", "restore"),
+                    listOf(
+                        "Fast" to listOf(
+                            "settings put global window_animation_scale 0.5",
+                            "settings put global transition_animation_scale 0.5",
+                            "settings put global animator_duration_scale 0.5"
+                        ),
+                        "Restore" to listOf(
+                            "settings put global window_animation_scale 1",
+                            "settings put global transition_animation_scale 1",
+                            "settings put global animator_duration_scale 1"
+                        )
+                    )
+                )
+            ),
+            ShizuleTemplate(
+                "Display Debugging",
+                "Read display size, density, refresh, and brightness state.",
+                "Low",
+                raw(
+                    "com.shizulu.template.display_debugging",
+                    "Display Debugging Template",
+                    "Read-only display diagnostics for checking device state.",
+                    "Low",
+                    listOf("diagnostics"),
+                    listOf(
+                        "Inspect Display" to listOf(
+                            "wm size",
+                            "wm density",
+                            "settings get system screen_brightness",
+                            "dumpsys display | grep -E 'mBaseDisplayInfo|DisplayDeviceInfo|refreshRate' | head -n 40"
+                        )
+                    )
+                )
+            ),
+            ShizuleTemplate(
+                "AppOps Viewer",
+                "Pick an app and inspect its AppOps state.",
+                "Low",
+                raw(
+                    "com.shizulu.template.appops_viewer",
+                    "AppOps Viewer Template",
+                    "Read AppOps state for a selected package.",
+                    "Low",
+                    listOf("appops", "diagnostics"),
+                    listOf("View AppOps" to listOf("cmd appops get {{package}}")),
+                    packageVariable
+                )
+            ),
+            ShizuleTemplate(
+                "Screen Timeout Presets",
+                "Set 30s, 2m, 5m, or restore timeout presets.",
+                "Low",
+                raw(
+                    "com.shizulu.template.screen_timeout_presets",
+                    "Screen Timeout Presets Template",
+                    "Change screen timeout through Android settings.",
+                    "Low",
+                    listOf("system_settings", "restore"),
+                    listOf(
+                        "30 seconds" to listOf("settings put system screen_off_timeout 30000"),
+                        "2 minutes" to listOf("settings put system screen_off_timeout 120000"),
+                        "5 minutes" to listOf("settings put system screen_off_timeout 300000"),
+                        "Restore 1 minute" to listOf("settings put system screen_off_timeout 60000")
+                    )
+                )
+            ),
+            ShizuleTemplate(
+                "Notification Permission Helper",
+                "Grant or revoke POST_NOTIFICATIONS for a selected app.",
+                "Medium",
+                raw(
+                    "com.shizulu.template.notification_permission_helper",
+                    "Notification Permission Helper Template",
+                    "Toggle Android notification permission for a selected package.",
+                    "Medium",
+                    listOf("package_manager", "permissions", "restore"),
+                    listOf(
+                        "Grant notifications" to listOf("pm grant {{package}} android.permission.POST_NOTIFICATIONS"),
+                        "Revoke notifications" to listOf("pm revoke {{package}} android.permission.POST_NOTIFICATIONS")
+                    ),
+                    packageVariable
+                )
+            )
+        )
+    }
+
     private fun builtInTestShizules(): List<String> {
         return listOf(
             shizuleJson(
@@ -2510,6 +3106,14 @@ class MainActivity : Activity() {
             put("name", "My Shizule")
             put("version", "1.0.0")
             put("description", "Describe what this shizule does.")
+            put("tier", "Community module")
+            put("compatibility", JSONObject().apply {
+                put("worksOn", JSONArray().put("pixel").put("samsung"))
+                put("androidMin", 13)
+                put("androidMax", 16)
+                put("requires", JSONArray().put("shizuku").put("adb"))
+            })
+            put("permissions", JSONArray().put("diagnostics").put("restore"))
             put("variables", JSONArray().apply {
                 put(JSONObject().apply {
                     put("name", "package")
@@ -3283,6 +3887,80 @@ class MainActivity : Activity() {
 
     private fun String.urlEncode(): String {
         return URLEncoder.encode(this, "UTF-8")
+    }
+
+    private fun compatibilitySummary(compatibility: ShizuleCompatibility): String? {
+        val bits = buildList {
+            if (compatibility.worksOn.isNotEmpty()) add(compatibility.worksOn.joinToString("/") { it.replaceFirstChar(Char::titlecase) })
+            compatibility.androidMin?.let { add("Android $it+") }
+            compatibility.androidMax?.let { add("to $it") }
+            if (compatibility.requires.isNotEmpty()) add("Needs ${compatibility.requires.joinToString("/")}")
+        }
+        return bits.joinToString(" ").takeIf { it.isNotBlank() }
+    }
+
+    private fun compatibilityDetails(compatibility: ShizuleCompatibility): String {
+        return compatibilitySummary(compatibility) ?: "No special limits declared"
+    }
+
+    private fun compatibilityWarnings(compatibility: ShizuleCompatibility): List<String> {
+        val manufacturer = Build.MANUFACTURER.lowercase(Locale.US)
+        val sdk = Build.VERSION.SDK_INT
+        return buildList {
+            if (compatibility.worksOn.isNotEmpty() && compatibility.worksOn.none { manufacturer.contains(it.lowercase(Locale.US)) }) {
+                add("This module lists ${compatibility.worksOn.joinToString(", ")} support, but this device is ${Build.MANUFACTURER}.")
+            }
+            compatibility.androidMin?.let { min ->
+                if (sdk < min) add("This module expects Android $min or newer. This device reports SDK $sdk.")
+            }
+            compatibility.androidMax?.let { max ->
+                if (sdk > max) add("This module expects Android $max or older. This device reports SDK $sdk.")
+            }
+            if ("shizuku" in compatibility.requires && executionMode != ExecutionMode.SHIZUKU) {
+                add("This module asks for Shizuku. Switch the backend if Wireless ADB cannot run it.")
+            }
+            if ((compatibility.requires.contains("adb") || compatibility.requires.contains("wireless_adb")) && executionMode != ExecutionMode.WIRELESS_ADB) {
+                add("This module asks for ADB. Switch to Wireless ADB if Shizuku cannot run it.")
+            }
+        }
+    }
+
+    private fun inferPermissionKeys(commands: List<String>): List<String> {
+        val joined = commands.joinToString("\n").lowercase(Locale.US)
+        return buildList {
+            if ("settings put" in joined || "cmd settings" in joined) add("system_settings")
+            if (" pm " in " $joined " || "cmd package" in joined || "package " in joined) add("package_manager")
+            if ("appops" in joined) add("appops")
+            if ("overlay" in joined) add("rro")
+            if ("clear " in joined || "pm clear" in joined) add("app_data")
+            if ("dumpsys" in joined || "getprop" in joined || "settings get" in joined || "cmd appops get" in joined) add("diagnostics")
+            if ("restore" in joined || " reset" in joined || "default" in joined) add("restore")
+        }.distinct()
+    }
+
+    private fun permissionStatements(keys: List<String>): List<String> {
+        return keys.map { it.lowercase(Locale.US) }.distinct().mapNotNull { key ->
+            when (key) {
+                "system_settings", "settings" -> "This module can change system settings."
+                "package_manager", "packages", "pm" -> "This module can run package manager commands."
+                "appops" -> "This module can inspect or change AppOps permissions."
+                "restore" -> "This module has restore support."
+                "rro", "overlay", "overlays" -> "This module can inspect or change runtime resource overlays."
+                "app_data", "data" -> "This module can clear or reset app data."
+                "diagnostics", "read_only" -> "This module can read diagnostic device information."
+                "permissions" -> "This module can grant or revoke shell-grantable permissions."
+                else -> key.takeIf { it.isNotBlank() }?.let { "This module declares: $it." }
+            }
+        }
+    }
+
+    private fun compatibilityJson(compatibility: ShizuleCompatibility): JSONObject {
+        return JSONObject().apply {
+            put("worksOn", JSONArray().apply { compatibility.worksOn.forEach(::put) })
+            compatibility.androidMin?.let { put("androidMin", it) }
+            compatibility.androidMax?.let { put("androidMax", it) }
+            put("requires", JSONArray().apply { compatibility.requires.forEach(::put) })
+        }
     }
 
     private fun compareVersions(left: String, right: String): Int {

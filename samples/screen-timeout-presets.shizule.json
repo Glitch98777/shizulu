@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "com.shizulu.template.screen_timeout_presets",
+  "name": "Screen Timeout Presets",
+  "version": "1.0.0",
+  "description": "Apply practical screen timeout presets and restore a one-minute default.",
+  "tier": "Official Shizulu module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["system_settings", "restore"],
+  "actions": [
+    {
+      "id": "30_seconds",
+      "label": "30 seconds",
+      "commands": [
+        {
+          "exec": "settings put system screen_off_timeout 30000"
+        }
+      ]
+    },
+    {
+      "id": "2_minutes",
+      "label": "2 minutes",
+      "commands": [
+        {
+          "exec": "settings put system screen_off_timeout 120000"
+        }
+      ]
+    },
+    {
+      "id": "5_minutes",
+      "label": "5 minutes",
+      "commands": [
+        {
+          "exec": "settings put system screen_off_timeout 300000"
+        }
+      ]
+    },
+    {
+      "id": "restore_1_minute",
+      "label": "Restore 1 minute",
+      "commands": [
+        {
+          "exec": "settings put system screen_off_timeout 60000"
+        }
+      ]
+    }
+  ]
+}

@@ -10,6 +10,9 @@ data class Shizule(
     val version: String,
     val description: String,
     val signature: ShizuleSignature?,
+    val compatibility: ShizuleCompatibility,
+    val permissions: List<String>,
+    val tier: String,
     val variables: List<ShizuleVariable>,
     val actions: List<ShizuleAction>
 ) {
@@ -38,6 +41,9 @@ data class Shizule(
                 version = obj.optString("version", "1.0.0").take(32),
                 description = obj.optString("description", "").take(240),
                 signature = parseSignature(obj.optJSONObject("signature")),
+                compatibility = parseCompatibility(obj.optJSONObject("compatibility")),
+                permissions = parseStringArray(obj.optJSONArray("permissions"), 64),
+                tier = obj.optString("tier", "").trim().take(48),
                 variables = parseVariables(obj.optJSONArray("variables")),
                 actions = actions
             )
@@ -75,6 +81,28 @@ data class Shizule(
             }
         }
 
+        private fun parseCompatibility(obj: JSONObject?): ShizuleCompatibility {
+            if (obj == null) return ShizuleCompatibility()
+            val min = if (obj.has("androidMin")) obj.optInt("androidMin") else null
+            val max = if (obj.has("androidMax")) obj.optInt("androidMax") else null
+            return ShizuleCompatibility(
+                worksOn = parseStringArray(obj.optJSONArray("worksOn"), 32).map { it.lowercase() },
+                androidMin = min?.takeIf { it > 0 },
+                androidMax = max?.takeIf { it > 0 },
+                requires = parseStringArray(obj.optJSONArray("requires"), 32).map { it.lowercase() }
+            )
+        }
+
+        private fun parseStringArray(array: JSONArray?, maxLength: Int): List<String> {
+            if (array == null) return emptyList()
+            return buildList {
+                for (index in 0 until array.length()) {
+                    val value = array.optString(index).trim().take(maxLength)
+                    if (value.isNotBlank()) add(value)
+                }
+            }
+        }
+
         private fun parseVariables(array: JSONArray?): List<ShizuleVariable> {
             if (array == null) return emptyList()
             return buildList {
@@ -106,6 +134,13 @@ data class ShizuleAction(
 
 data class ShizuleCommand(
     val exec: String
+)
+
+data class ShizuleCompatibility(
+    val worksOn: List<String> = emptyList(),
+    val androidMin: Int? = null,
+    val androidMax: Int? = null,
+    val requires: List<String> = emptyList()
 )
 
 data class ShizuleVariable(

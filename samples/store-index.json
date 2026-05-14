@@ -10,8 +10,93 @@
       "description": "Off, fast, normal, and relaxed animation presets using shell-accessible settings.",
       "author": "Shizulu",
       "risk": "Low",
-      "tags": ["settings", "animations"],
+      "tier": "Official Shizulu module",
+      "template": true,
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["system_settings", "restore"],
+      "tags": ["settings", "animations", "template"],
       "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/animation-tuner.shizule.json"
+    },
+    {
+      "id": "com.shizulu.template.display_debugging",
+      "name": "Display Debugging",
+      "version": "1.0.0",
+      "description": "Read display size, density, brightness, and refresh information without changing settings.",
+      "author": "Shizulu",
+      "risk": "Low",
+      "tier": "Official Shizulu module",
+      "template": true,
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["diagnostics"],
+      "tags": ["display", "diagnostics", "template"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/display-debugging.shizule.json"
+    },
+    {
+      "id": "com.shizulu.template.appops_viewer",
+      "name": "AppOps Viewer",
+      "version": "1.0.0",
+      "description": "Pick an app and inspect its AppOps state through shell privileges.",
+      "author": "Shizulu",
+      "risk": "Low",
+      "tier": "Official Shizulu module",
+      "template": true,
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["appops", "diagnostics"],
+      "tags": ["appops", "viewer", "template"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/appops-viewer.shizule.json"
+    },
+    {
+      "id": "com.shizulu.template.screen_timeout_presets",
+      "name": "Screen Timeout Presets",
+      "version": "1.0.0",
+      "description": "Apply practical screen timeout presets and restore a one-minute default.",
+      "author": "Shizulu",
+      "risk": "Low",
+      "tier": "Official Shizulu module",
+      "template": true,
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["system_settings", "restore"],
+      "tags": ["display", "settings", "template"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/screen-timeout-presets.shizule.json"
+    },
+    {
+      "id": "com.shizulu.template.notification_permission_helper",
+      "name": "Notification Permission Helper",
+      "version": "1.0.0",
+      "description": "Grant or revoke POST_NOTIFICATIONS for a selected app when Android allows shell grants.",
+      "author": "Shizulu",
+      "risk": "Medium",
+      "tier": "Reviewed module",
+      "template": true,
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["package_manager", "permissions", "restore"],
+      "tags": ["notifications", "permissions", "template"],
+      "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/notification-permission-helper.shizule.json"
     },
     {
       "id": "com.shizulu.sample.display_comfort_pack",
@@ -20,6 +105,14 @@
       "description": "Calmer display settings and a restore action for supported Android builds.",
       "author": "Shizulu",
       "risk": "Low",
+      "tier": "Official Shizulu module",
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["system_settings", "restore"],
       "tags": ["display", "comfort"],
       "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/display-comfort-pack.shizule.json"
     },
@@ -30,6 +123,14 @@
       "description": "Conservative user-0 disable/restore actions for common optional apps.",
       "author": "Shizulu",
       "risk": "Medium",
+      "tier": "Reviewed module",
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["package_manager", "restore"],
       "tags": ["debloat", "packages"],
       "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/light-debloat-manager.shizule.json"
     },
@@ -40,6 +141,14 @@
       "description": "Attempts legitimate ADB-level grants and app-ops for Shizulu, with restore support.",
       "author": "Shizulu",
       "risk": "Medium",
+      "tier": "Official Shizulu module",
+      "compatibility": {
+        "worksOn": ["pixel", "samsung"],
+        "androidMin": 13,
+        "androidMax": 16,
+        "requires": ["shizuku", "adb"]
+      },
+      "permissions": ["package_manager", "appops", "permissions", "restore"],
       "tags": ["permissions", "appops"],
       "url": "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples/shizulu-capability-booster.shizule.json"
     }

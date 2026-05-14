@@ -4,6 +4,14 @@
   "name": "Light Debloat Manager",
   "version": "1.0.0",
   "description": "Disables common optional Google/Pixel apps for user 0 without uninstalling them. Restore re-enables everything in this profile.",
+  "tier": "Reviewed module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["package_manager", "restore"],
   "actions": [
     {
       "id": "apply",

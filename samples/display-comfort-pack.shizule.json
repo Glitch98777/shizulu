@@ -4,6 +4,14 @@
   "name": "Display Comfort Pack",
   "version": "1.0.0",
   "description": "Applies calmer display settings: show touches off, pointer location off, reduced motion, and stable adaptive sleep defaults where supported.",
+  "tier": "Official Shizulu module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["system_settings", "restore"],
   "actions": [
     {
       "id": "comfort",

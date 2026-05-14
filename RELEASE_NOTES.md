@@ -30,6 +30,10 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Store cards now show Install, Update, or Already up to date based on the installed shizule version instead of saying Reinstall.
 - Update checks no longer depend on GitHub's compare API, and fall back to the public latest-release redirect if the releases API returns HTTP 403.
 - Community Store submissions can now point to raw `.shizule.json` URLs, and the expanded low/medium/high risk module pack is published through GitHub submissions instead of the curated local index.
+- Visual Shizule Builder creates installable modules from fields, actions, compatibility metadata, permission declarations, and publish flow without hand-writing JSON.
+- Shizule JSON and Store entries now support compatibility metadata: `worksOn`, `androidMin`, `androidMax`, and `requires`.
+- Store cards and install previews now show verified tiers, compatibility warnings, and module permission statements before install.
+- Template Gallery adds working starter shizules for animation tuning, display debugging, AppOps viewing, screen timeout presets, and notification permission grants.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

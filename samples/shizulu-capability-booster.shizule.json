@@ -4,6 +4,14 @@
   "name": "Shizulu Capability Booster",
   "version": "1.0.0",
   "description": "Gives Shizulu the strongest legitimate ADB-grantable app permissions and app-ops available without root.",
+  "tier": "Official Shizulu module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["package_manager", "appops", "permissions", "restore"],
   "actions": [
     {
       "id": "apply",

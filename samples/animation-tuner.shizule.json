@@ -4,6 +4,14 @@
   "name": "Animation Tuner",
   "version": "1.0.0",
   "description": "Switches Android animation speed between off, fast, normal, and relaxed presets.",
+  "tier": "Official Shizulu module",
+  "compatibility": {
+    "worksOn": ["pixel", "samsung"],
+    "androidMin": 13,
+    "androidMax": 16,
+    "requires": ["shizuku", "adb"]
+  },
+  "permissions": ["system_settings", "restore"],
   "actions": [
     {
       "id": "off",
