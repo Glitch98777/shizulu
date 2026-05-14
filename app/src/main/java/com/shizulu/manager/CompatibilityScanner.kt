@@ -41,6 +41,10 @@ object CompatibilityScanner {
         val manufacturer = Build.MANUFACTURER.lowercase(Locale.US)
         val model = Build.MODEL
         val sdk = Build.VERSION.SDK_INT
+        val hasDeclaredDeviceLimits = compatibility.worksOn.isNotEmpty() ||
+            compatibility.androidMin != null ||
+            compatibility.androidMax != null
+        val hasDeclaredBackendRequirements = compatibility.requires.isNotEmpty()
 
         if (compatibility.worksOn.isNotEmpty()) {
             val matches = compatibility.worksOn.any { manufacturer.contains(it.lowercase(Locale.US)) || model.lowercase(Locale.US).contains(it.lowercase(Locale.US)) }
@@ -51,8 +55,7 @@ object CompatibilityScanner {
                 warnings += "Module lists ${compatibility.worksOn.joinToString(", ")} but this device is ${Build.MANUFACTURER} $model."
             }
         } else {
-            level = max(level, CompatibilityLevel.UNKNOWN)
-            warnings += "Module does not declare supported device families."
+            reasons += "No device-family limit declared; treating it as a generic Android shell module."
         }
 
         compatibility.androidMin?.let { min ->
@@ -69,8 +72,21 @@ object CompatibilityScanner {
         }
 
         if (compatibility.requires.isEmpty()) {
-            level = max(level, CompatibilityLevel.UNKNOWN)
-            warnings += "Module does not say whether it needs Shizuku, Wireless ADB, or both."
+            val inferred = inferBackendRequirements(shizule)
+            val backendReady = when (mode) {
+                ExecutionMode.SHIZUKU -> shizukuReady
+                ExecutionMode.WIRELESS_ADB -> wirelessAdbReady
+            }
+            if (backendReady) {
+                level = max(level, CompatibilityLevel.PROBABLY_COMPATIBLE)
+                reasons += "No backend requirement declared; commands look runnable through the selected ${mode.label} shell backend."
+            } else {
+                level = max(level, CompatibilityLevel.PARTIALLY_COMPATIBLE)
+                warnings += "No backend requirement declared, and the selected ${mode.label} backend is not ready."
+            }
+            if (inferred.isNotEmpty()) {
+                reasons += "Inferred command needs: ${inferred.joinToString(", ")}."
+            }
         } else {
             val wantsShizuku = "shizuku" in compatibility.requires
             val wantsAdb = compatibility.requires.any { it == "adb" || it == "wireless_adb" }
@@ -84,11 +100,29 @@ object CompatibilityScanner {
             }
         }
 
-        if (reasons.isEmpty() && warnings.isEmpty()) {
+        if (!hasDeclaredDeviceLimits && !hasDeclaredBackendRequirements && level == CompatibilityLevel.COMPATIBLE) {
             level = CompatibilityLevel.PROBABLY_COMPATIBLE
-            reasons += "No compatibility limits were declared."
+            reasons += "No compatibility limits were declared, so Shizulu is using command-based compatibility inference."
+        } else if (reasons.isEmpty() && warnings.isEmpty()) {
+            level = CompatibilityLevel.PROBABLY_COMPATIBLE
+            reasons += "No compatibility problems detected."
         }
         return CompatibilityReport(level, reasons, warnings)
+    }
+
+    private fun inferBackendRequirements(shizule: Shizule): List<String> {
+        val joined = shizule.actions
+            .flatMap { it.commands + it.prechecks + it.postchecks + it.restoreCommands }
+            .joinToString("\n") { it.exec }
+            .lowercase(Locale.US)
+        return buildList {
+            if ("settings " in joined || "cmd settings" in joined) add("settings service")
+            if ("cmd appops" in joined || "appops " in joined) add("appops service")
+            if ("pm " in joined || "cmd package" in joined) add("package manager")
+            if ("dumpsys" in joined) add("dumpsys")
+            if ("device_config" in joined) add("device_config")
+            if ("cmd overlay" in joined) add("overlay service")
+        }.distinct()
     }
 
     private fun max(left: CompatibilityLevel, right: CompatibilityLevel): CompatibilityLevel {
