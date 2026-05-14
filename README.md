@@ -89,7 +89,7 @@ The optional `signature` metadata is informational for now; it is a trust signal
 
 The in-app Store reads the public index at `samples/store-index.json`. Each entry points to a raw shizule JSON URL and includes author, risk, tags, version, and description metadata.
 
-To publish a shizule, use the app's Store > Publish button or open a GitHub issue with the `Shizule Store submission` template. Reviewed submissions can be added to the index so they become visible in the app for everyone.
+To publish a shizule, use Store > Create, edit the JSON, then tap Publish. Shizulu installs it, makes it visible in your local Store immediately, and opens a prefilled GitHub submission. The public Store also reads open `[Store]` GitHub issues, so community submissions can appear from GitHub without waiting for a manual index merge.
 
 ## Safety Model
 

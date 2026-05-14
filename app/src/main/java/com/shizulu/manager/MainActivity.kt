@@ -40,6 +40,7 @@ import rikka.shizuku.Shizuku
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,7 +59,8 @@ private data class StoreItem(
     val author: String,
     val url: String,
     val tags: List<String>,
-    val risk: String
+    val risk: String,
+    val rawJson: String = ""
 )
 
 class MainActivity : Activity() {
@@ -502,10 +504,7 @@ class MainActivity : Activity() {
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(secondaryButton("Create") { showShizuleMaker() }, LinearLayout.LayoutParams(0, dp(44), 1f))
-                addView(secondaryButton("Publish") { openStorePublishPage() }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                    leftMargin = dp(10)
-                })
+                addView(secondaryButton("Create") { showShizuleMaker() }, LinearLayout.LayoutParams(-1, dp(44)))
             })
         }
     }
@@ -931,7 +930,7 @@ class MainActivity : Activity() {
             moduleSummaryText.text = "${shizules.size}\nModules"
         }
         if (::storeSummaryText.isInitialized) {
-            storeSummaryText.text = "${publicStoreItems.size}\nStore"
+            storeSummaryText.text = "${visibleStoreItems().size}\nStore"
         }
         if (::profilesList.isInitialized) {
             refreshProfiles(shizules)
@@ -952,14 +951,14 @@ class MainActivity : Activity() {
         if (!::storeList.isInitialized) return
         storeList.removeAllViews()
         if (::storeSummaryText.isInitialized) {
-            storeSummaryText.text = "${publicStoreItems.size}\nStore"
+            storeSummaryText.text = "${visibleStoreItems().size}\nStore"
         }
         when {
             storeLoading -> storeList.addView(storeMessageView("Loading public shizules...", "Fetching the public index from GitHub."))
-            publicStoreItems.isEmpty() -> {
+            visibleStoreItems().isEmpty() -> {
                 storeList.addView(storeMessageView("No store items loaded", "Tap Refresh to load the public store, or Create to build your own shizule."))
             }
-            else -> publicStoreItems.forEachIndexed { index, item ->
+            else -> visibleStoreItems().forEachIndexed { index, item ->
                 storeList.addView(storeItemView(item), spacedParams(top = if (index == 0) 0 else 12))
             }
         }
@@ -1299,15 +1298,60 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun visibleStoreItems(): List<StoreItem> {
+        return (loadLocalStoreItems() + publicStoreItems).distinctBy { it.id }
+    }
+
     private fun fetchStoreItems(): List<StoreItem> {
         val obj = JSONObject(httpGet(SHIZULE_STORE_INDEX_URL))
         val items = obj.optJSONArray("items") ?: JSONArray()
-        return buildList {
+        val indexed = buildList {
             for (index in 0 until items.length()) {
                 val item = parseStoreItem(items.getJSONObject(index))
                 if (item.url.isNotBlank()) add(item)
             }
         }
+        val community = runCatching { fetchCommunityStoreItems() }
+            .onFailure { appendLog("Community store fetch failed: ${it.message ?: it.javaClass.simpleName}") }
+            .getOrDefault(emptyList())
+        return (community + indexed).distinctBy { it.id }
+    }
+
+    private fun fetchCommunityStoreItems(): List<StoreItem> {
+        val issues = JSONArray(httpGet(SHIZULE_STORE_ISSUES_URL))
+        return buildList {
+            for (index in 0 until issues.length()) {
+                val issue = issues.getJSONObject(index)
+                val title = issue.optString("title")
+                if (!title.startsWith("[Store]", ignoreCase = true)) continue
+                val raw = extractJsonBlock(issue.optString("body")).orEmpty()
+                val shizule = runCatching { Shizule.fromJson(raw) }.getOrNull() ?: continue
+                add(
+                    StoreItem(
+                        id = shizule.id,
+                        name = shizule.name,
+                        version = shizule.version,
+                        description = shizule.description,
+                        author = issue.optJSONObject("user")?.optString("login", "Community") ?: "Community",
+                        url = issue.optString("html_url"),
+                        tags = listOf("community", "auto-published"),
+                        risk = "Community",
+                        rawJson = raw
+                    )
+                )
+            }
+        }
+    }
+
+    private fun extractJsonBlock(body: String): String? {
+        val startMarker = "```json"
+        val start = body.indexOf(startMarker, ignoreCase = true)
+        if (start < 0) return null
+        val jsonStart = body.indexOf('\n', start)
+        if (jsonStart < 0) return null
+        val end = body.indexOf("```", jsonStart + 1)
+        if (end < 0) return null
+        return body.substring(jsonStart + 1, end).trim().takeIf { it.isNotBlank() }
     }
 
     private fun parseStoreItem(obj: JSONObject): StoreItem {
@@ -1363,10 +1407,10 @@ class MainActivity : Activity() {
 
     private fun installStoreItem(item: StoreItem) {
         appendLog("Store install started: ${item.id}")
-        Toast.makeText(this, "Downloading ${item.name}...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, if (item.rawJson.isBlank()) "Downloading ${item.name}..." else "Installing ${item.name}...", Toast.LENGTH_SHORT).show()
         executor.execute {
             runCatching {
-                val raw = httpGet(item.url)
+                val raw = item.rawJson.ifBlank { httpGet(item.url) }
                 val shizule = Shizule.fromJson(raw)
                 require(shizule.id == item.id) {
                     "Store index id ${item.id} did not match downloaded shizule ${shizule.id}."
@@ -1403,9 +1447,62 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun openStorePublishPage() {
-        appendLog("Opening Shizule Store publish page")
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SHIZULE_STORE_PUBLISH_URL)))
+    private fun publishCreatedShizule(raw: String, shizule: Shizule) {
+        saveLocalStoreItem(raw, shizule)
+        appendLog("Published local store shizule ${shizule.name} (${shizule.id})")
+        refreshStoreList()
+        Toast.makeText(this, "${shizule.name} is visible in Store", Toast.LENGTH_LONG).show()
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(storeSubmissionUrl(raw, shizule))))
+    }
+
+    private fun saveLocalStoreItem(raw: String, shizule: Shizule) {
+        val existing = loadLocalStoreObjects()
+        val next = JSONArray()
+        for (index in 0 until existing.length()) {
+            val obj = existing.getJSONObject(index)
+            if (obj.optString("id") != shizule.id) next.put(obj)
+        }
+        next.put(JSONObject().apply {
+            put("id", shizule.id)
+            put("name", shizule.name)
+            put("version", shizule.version)
+            put("description", shizule.description)
+            put("author", "You")
+            put("risk", "Review")
+            put("url", "local://${shizule.id}")
+            put("rawJson", raw)
+            put("tags", JSONArray().put("created").put("local"))
+        })
+        settingsPrefs.edit().putString(KEY_LOCAL_STORE_ITEMS, next.toString()).apply()
+    }
+
+    private fun loadLocalStoreItems(): List<StoreItem> {
+        val array = loadLocalStoreObjects()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val obj = array.getJSONObject(index)
+                add(parseStoreItem(obj).copy(rawJson = obj.optString("rawJson")))
+            }
+        }
+    }
+
+    private fun loadLocalStoreObjects(): JSONArray {
+        return runCatching { JSONArray(settingsPrefs.getString(KEY_LOCAL_STORE_ITEMS, "[]")) }.getOrDefault(JSONArray())
+    }
+
+    private fun storeSubmissionUrl(raw: String, shizule: Shizule): String {
+        val title = "[Store] Add ${shizule.name}"
+        val body = buildString {
+            append("## Shizule Store submission\n\n")
+            append("This issue is auto-readable by Shizulu's public Store. Once submitted, it can appear in the community section without a manual repo merge.\n\n")
+            append("Name: ").append(shizule.name).append('\n')
+            append("ID: ").append(shizule.id).append('\n')
+            append("Version: ").append(shizule.version).append("\n\n")
+            append("Description:\n").append(shizule.description.ifBlank { "No description provided." }).append("\n\n")
+            append("Risk: Review\n\n")
+            append("```json\n").append(raw).append("\n```\n")
+        }
+        return "$SHIZULE_STORE_SUBMIT_URL?title=${title.urlEncode()}&labels=shizule-store&body=${body.urlEncode()}"
     }
 
     private fun openJsonPicker() {
@@ -1519,29 +1616,69 @@ class MainActivity : Activity() {
             setTextColor(COLORS.ink)
             setHintTextColor(COLORS.muted)
             background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+            isVerticalScrollBarEnabled = true
         }
 
+        val maxEditorHeight = (resources.displayMetrics.heightPixels * 0.48f)
+            .toInt()
+            .coerceIn(dp(260), dp(430))
         val editorWrap = ScrollView(this).apply {
             setPadding(dp(2), dp(2), dp(2), dp(2))
             addView(editor, LinearLayout.LayoutParams(-1, -2))
         }
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Module Maker")
-            .setMessage("Edit the JSON, then install it as a shizule.")
-            .setView(editorWrap)
-            .setPositiveButton("Install") { _, _ ->
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(4), dp(18), 0)
+            addView(TextView(context).apply {
+                text = "Edit the JSON, then install it or publish it into your Store list and open the GitHub submission."
+                textSize = 13f
+                setTextColor(COLORS.muted)
+                setPadding(0, 0, 0, dp(10))
+            })
+            addView(editorWrap, LinearLayout.LayoutParams(-1, maxEditorHeight))
+        }
+
+        lateinit var dialog: android.app.AlertDialog
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(12), 0, 0)
+            addView(secondaryButton("Cancel") { dialog.dismiss() }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            addView(compactButton("Install", filled = true) {
                 val raw = editor.text.toString()
                 runCatching { Shizule.fromJson(raw) }
-                    .onSuccess { shizule -> installTrusted(raw, shizule) }
+                    .onSuccess { shizule ->
+                        installTrusted(raw, shizule)
+                        dialog.dismiss()
+                    }
                     .onFailure {
                         val message = it.message ?: "Invalid shizule JSON"
                         appendLog("Module Maker install failed: $message")
                         showOutput("Module Maker", "Invalid shizule:\n\n$message")
                     }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
+            addView(compactButton("Publish", filled = true) {
+                val raw = editor.text.toString()
+                runCatching { Shizule.fromJson(raw) }
+                    .onSuccess { shizule ->
+                        installTrusted(raw, shizule)
+                        publishCreatedShizule(raw, shizule)
+                        dialog.dismiss()
+                    }
+                    .onFailure {
+                        val message = it.message ?: "Invalid shizule JSON"
+                        appendLog("Module Maker publish failed: $message")
+                        showOutput("Module Maker", "Invalid shizule:\n\n$message")
+                    }
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
+        }
+        content.addView(actions)
+
+        dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Module Maker")
+            .setView(content)
+            .create()
+        dialog.show()
     }
 
     private fun runShizuluElevation() {
@@ -3078,6 +3215,10 @@ class MainActivity : Activity() {
         return "'${replace("'", "'\"'\"'")}'"
     }
 
+    private fun String.urlEncode(): String {
+        return URLEncoder.encode(this, "UTF-8")
+    }
+
     private fun String.isSafeShellToken(): Boolean {
         return matches(SAFE_SHELL_TOKEN_PATTERN)
     }
@@ -3121,6 +3262,7 @@ class MainActivity : Activity() {
         private const val KEY_ACCENT_THEME = "accent_theme"
         private const val KEY_UPDATER_STATUS = "updater_status"
         private const val KEY_LATEST_RELEASE = "latest_release"
+        private const val KEY_LOCAL_STORE_ITEMS = "local_store_items"
         private const val KEY_WIRELESS_ADB_KEEP_ALIVE = "wireless_adb_keep_alive"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
@@ -3132,7 +3274,8 @@ class MainActivity : Activity() {
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
         private const val SHIZULE_STORE_RAW_BASE = "https://raw.githubusercontent.com/Glitch98777/shizulu/main/samples"
         private const val SHIZULE_STORE_INDEX_URL = "$SHIZULE_STORE_RAW_BASE/store-index.json"
-        private const val SHIZULE_STORE_PUBLISH_URL = "https://github.com/Glitch98777/shizulu/issues/new?template=shizule_submission.yml"
+        private const val SHIZULE_STORE_ISSUES_URL = "https://api.github.com/repos/Glitch98777/shizulu/issues?state=open&per_page=50"
+        private const val SHIZULE_STORE_SUBMIT_URL = "https://github.com/Glitch98777/shizulu/issues/new"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
         private val NUMBER_VALUE_PATTERN = Regex("^-?[0-9]+(\\.[0-9]+)?$")
         private val VARIABLE_PATTERN = Regex("\\{\\{([A-Za-z][A-Za-z0-9_]*)\\}\\}")
