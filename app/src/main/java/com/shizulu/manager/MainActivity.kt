@@ -22,7 +22,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.Window
@@ -114,6 +116,9 @@ class MainActivity : Activity() {
     private var latestRelease: GithubRelease? = null
     private var publicStoreItems: List<StoreItem> = emptyList()
     private var storeLoading = false
+    private var storeSearchQuery = ""
+    private var storeRiskFilter = "All"
+    private var storeSortMode = "Risk"
 
     private val permissionListener =
         Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -512,6 +517,50 @@ class MainActivity : Activity() {
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(6), 0, dp(10))
             })
+
+            addView(EditText(context).apply {
+                hint = "Search modules, tags, authors"
+                textSize = 13f
+                setSingleLine(true)
+                setTextColor(COLORS.ink)
+                setHintTextColor(COLORS.muted)
+                setPadding(dp(12), 0, dp(12), 0)
+                minHeight = dp(44)
+                background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        storeSearchQuery = s?.toString().orEmpty()
+                        refreshStoreList()
+                    }
+                    override fun afterTextChanged(s: Editable?) = Unit
+                })
+            }, spacedParams(top = 2))
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf("All", "Low", "Medium", "High").forEachIndexed { index, label ->
+                    addView(compactButton(label, filled = storeRiskFilter == label) {
+                        storeRiskFilter = label
+                        refreshStoreList()
+                    }, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                        if (index > 0) leftMargin = dp(8)
+                    })
+                }
+            }, spacedParams(top = 10))
+
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf("Risk", "Name", "Updated").forEachIndexed { index, label ->
+                    addView(compactButton("Sort: $label", filled = storeSortMode == label) {
+                        storeSortMode = label
+                        refreshStoreList()
+                    }, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                        if (index > 0) leftMargin = dp(8)
+                    })
+                }
+            }, spacedParams(top = 10))
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1275,7 +1324,23 @@ class MainActivity : Activity() {
                 textSize = 14f
                 setTextColor(COLORS.body)
                 setLineSpacing(0f, 1.08f)
-                setPadding(0, dp(12), 0, dp(13))
+                setPadding(0, dp(12), 0, dp(8))
+            })
+
+            val riskReport = ShizuleRiskScanner.scan(shizule)
+            val trust = ShizuleTrust.evaluate(shizule)
+            val compatibility = CompatibilityScanner.scan(
+                shizule,
+                executionMode,
+                runCatching { Shizuku.pingBinder() && hasShizukuPermission() }.getOrDefault(false),
+                wirelessAdbConfigured()
+            )
+            addView(TextView(context).apply {
+                text = "${riskReport.level} risk | ${trust.label} | ${compatibility.label()}"
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(if (riskReport.level.atLeast(RiskLevel.HIGH)) COLORS.warning else COLORS.muted)
+                setPadding(0, 0, 0, dp(13))
             })
 
             addView(HorizontalScrollView(context).apply {
@@ -1285,6 +1350,8 @@ class MainActivity : Activity() {
                     shizule.actions.forEach { action ->
                         addView(compactButton(action.label, filled = true) { runAction(shizule, action) })
                     }
+                    addView(compactButton("Details", filled = false) { showModuleDetails(shizule) }, rowGapParams())
+                    addView(compactButton("Restore Last", filled = false) { restoreLastForModule(shizule.id) }, rowGapParams())
                     addView(compactButton("Remove", filled = false) {
                         store.delete(shizule)
                         refreshModules()
@@ -1307,6 +1374,7 @@ class MainActivity : Activity() {
             runCatching { fetchStoreItems() }
                 .onSuccess { items ->
                     publicStoreItems = items
+                    saveStoreCache(items)
                     appendLog("Shizule Store loaded: ${items.size} item(s)")
                     mainHandler.post {
                         storeLoading = false
@@ -1316,19 +1384,38 @@ class MainActivity : Activity() {
                 .onFailure {
                     val message = it.message ?: it.javaClass.simpleName
                     appendLog("Shizule Store refresh failed: $message")
-                    val fallback = builtInStoreItems()
+                    val fallback = loadStoreCache().ifEmpty { builtInStoreItems() }
                     publicStoreItems = fallback
                     mainHandler.post {
                         storeLoading = false
                         refreshStoreList()
-                        Toast.makeText(this, "Store offline; showing bundled picks.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Store offline or rate-limited; showing cached picks.", Toast.LENGTH_LONG).show()
                     }
                 }
         }
     }
 
     private fun visibleStoreItems(): List<StoreItem> {
-        return (loadLocalStoreItems() + publicStoreItems).distinctBy { it.id }
+        val query = storeSearchQuery.trim().lowercase(Locale.US)
+        return (loadLocalStoreItems() + publicStoreItems)
+            .distinctBy { it.id }
+            .filter { item ->
+                query.isBlank() ||
+                    item.name.lowercase(Locale.US).contains(query) ||
+                    item.description.lowercase(Locale.US).contains(query) ||
+                    item.author.lowercase(Locale.US).contains(query) ||
+                    item.tags.any { it.lowercase(Locale.US).contains(query) }
+            }
+            .filter { item ->
+                storeRiskFilter == "All" || item.risk.equals(storeRiskFilter, ignoreCase = true)
+            }
+            .let { items ->
+                when (storeSortMode) {
+                    "Name" -> items.sortedBy { it.name.lowercase(Locale.US) }
+                    "Updated" -> items.sortedWith(compareByDescending<StoreItem> { it.versionCodeHint() }.thenBy { it.name.lowercase(Locale.US) })
+                    else -> items.sortedWith(compareBy<StoreItem> { riskRank(it.risk) }.thenBy { it.name.lowercase(Locale.US) })
+                }
+            }
     }
 
     private fun fetchStoreItems(): List<StoreItem> {
@@ -1560,6 +1647,15 @@ class MainActivity : Activity() {
     }
 
     private fun showInstallReview(raw: String, shizule: Shizule, source: StoreItem?, onInstall: () -> Unit) {
+        val validation = Shizule.validate(raw)
+        val riskReport = ShizuleRiskScanner.scan(shizule)
+        val trust = ShizuleTrust.evaluate(shizule)
+        val compatibilityReport = CompatibilityScanner.scan(
+            shizule = shizule,
+            mode = executionMode,
+            shizukuReady = runCatching { Shizuku.pingBinder() && hasShizukuPermission() }.getOrDefault(false),
+            wirelessAdbReady = wirelessAdbConfigured()
+        )
         val commands = shizule.actions.flatMap { action -> action.commands }.map { command -> command.exec }
         val permissionKeys = source?.permissions.orEmpty()
             .ifEmpty { shizule.permissions }
@@ -1580,8 +1676,28 @@ class MainActivity : Activity() {
                 })
 
                 addReviewLine("Tier", source?.tier ?: shizule.tier.ifBlank { "Community module" })
+                addReviewLine("Trust", "${trust.label}: ${trust.message}")
+                addReviewLine("Risk", "${riskReport.level}: ${riskReport.summary}")
                 addReviewLine("Compatibility", compatibilityDetails(compatibility))
+                addReviewLine("Compatibility scan", compatibilityReport.label())
                 addReviewLine("Actions", "${shizule.actions.size} action(s), ${commands.size} command(s)")
+                addReviewLine(
+                    "Restore",
+                    when {
+                        riskReport.restoreAvailable && riskReport.restorePartial -> "Partial restore/snapshot support"
+                        riskReport.restoreAvailable -> "Restore support declared"
+                        else -> "No full restore support declared"
+                    }
+                )
+
+                if (validation.warnings.isNotEmpty()) {
+                    addView(TextView(context).apply {
+                        text = validation.warnings.joinToString("\n") { "- $it" }
+                        textSize = 13f
+                        setTextColor(COLORS.warning)
+                        setPadding(0, dp(12), 0, 0)
+                    })
+                }
 
                 val statements = permissionStatements(permissionKeys)
                 addView(TextView(context).apply {
@@ -1601,27 +1717,57 @@ class MainActivity : Activity() {
                 }
 
                 val compatibilityWarnings = compatibilityWarnings(compatibility)
-                if (compatibilityWarnings.isNotEmpty()) {
+                val allWarnings = compatibilityWarnings + compatibilityReport.warnings
+                if (allWarnings.isNotEmpty()) {
                     addView(TextView(context).apply {
-                        text = compatibilityWarnings.joinToString("\n")
+                        text = allWarnings.distinct().joinToString("\n")
                         textSize = 13f
                         typeface = Typeface.DEFAULT_BOLD
                         setTextColor(COLORS.warning)
                         setPadding(0, dp(12), 0, 0)
                     })
                 }
+
+                addView(TextView(context).apply {
+                    text = "Command risk"
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(COLORS.ink)
+                    setPadding(0, dp(12), 0, dp(6))
+                })
+                riskReport.commandRisks.forEach { risk ->
+                    addView(TextView(context).apply {
+                        text = "${risk.index}. ${risk.level}${if (risk.blocked) " BLOCKED" else ""}: ${risk.reasons.joinToString("; ")}\n${risk.command}"
+                        textSize = 12f
+                        setTextColor(if (risk.blocked) COLORS.warning else COLORS.body)
+                        setPadding(0, dp(4), 0, dp(4))
+                    })
+                }
             })
         }
 
-        android.app.AlertDialog.Builder(this)
+        val builder = android.app.AlertDialog.Builder(this)
             .setTitle("Review install")
             .setView(content)
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("Install") { _, _ ->
+        if (riskReport.blocked || trust.level == TrustLevel.TAMPERED || !validation.isValid) {
+            builder.setPositiveButton("Blocked") { _, _ ->
+                showOutput(
+                    "Install Blocked",
+                    buildString {
+                        if (!validation.isValid) append("Validation failed:\n").append(validation.errors.joinToString("\n")).append("\n\n")
+                        if (trust.level == TrustLevel.TAMPERED) append(trust.message).append("\n\n")
+                        if (riskReport.blocked) append("Critical command risk detected:\n").append(riskReport.commandRisks.filter { it.blocked }.joinToString("\n\n") { "${it.command}\n${it.reasons.joinToString("; ")}" })
+                    }
+                )
+            }
+        } else {
+            builder.setPositiveButton("Install") { _, _ ->
                 appendLog("Install approved: ${shizule.name} (${shizule.id})")
                 onInstall()
             }
-            .show()
+        }
+        builder.show()
     }
 
     private fun LinearLayout.addReviewLine(label: String, value: String) {
@@ -1677,6 +1823,38 @@ class MainActivity : Activity() {
 
     private fun loadLocalStoreObjects(): JSONArray {
         return runCatching { JSONArray(settingsPrefs.getString(KEY_LOCAL_STORE_ITEMS, "[]")) }.getOrDefault(JSONArray())
+    }
+
+    private fun saveStoreCache(items: List<StoreItem>) {
+        val array = JSONArray().apply {
+            items.take(100).forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("name", item.name)
+                    put("version", item.version)
+                    put("description", item.description)
+                    put("author", item.author)
+                    put("url", item.url)
+                    put("risk", item.risk)
+                    put("tier", item.tier)
+                    put("template", item.template)
+                    put("tags", JSONArray().apply { item.tags.forEach(::put) })
+                    put("permissions", JSONArray().apply { item.permissions.forEach(::put) })
+                    put("compatibility", compatibilityJson(item.compatibility))
+                })
+            }
+        }
+        settingsPrefs.edit().putString(KEY_STORE_CACHE, array.toString()).apply()
+    }
+
+    private fun loadStoreCache(): List<StoreItem> {
+        val raw = settingsPrefs.getString(KEY_STORE_CACHE, "[]").orEmpty()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) add(parseStoreItem(array.getJSONObject(index)))
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun storeSubmissionUrl(raw: String, shizule: Shizule): String {
@@ -1771,6 +1949,21 @@ class MainActivity : Activity() {
     }
 
     private fun installTrusted(raw: String, shizule: Shizule, refreshAfterInstall: Boolean, showToast: Boolean): Boolean {
+        val validation = Shizule.validate(raw)
+        if (!validation.isValid) {
+            val message = validation.errors.joinToString("\n").ifBlank { "Invalid shizule JSON" }
+            appendLog("Install blocked by validation: $message")
+            if (showToast) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            return false
+        }
+        val riskReport = ShizuleRiskScanner.scan(shizule)
+        val trust = ShizuleTrust.evaluate(shizule)
+        if (riskReport.blocked || trust.level == TrustLevel.TAMPERED) {
+            val message = if (trust.level == TrustLevel.TAMPERED) trust.message else "Critical command risk blocked."
+            appendLog("Install blocked for ${shizule.id}: $message")
+            if (showToast) showOutput("Install Blocked", message)
+            return false
+        }
         return runCatching { store.install(raw) }
             .onSuccess {
                 appendLog("Installed shizule ${it.name} (${it.id})")
@@ -2598,6 +2791,35 @@ class MainActivity : Activity() {
             return
         }
 
+        val actionRisk = ShizuleRiskScanner.scan(shizule.copy(actions = listOf(action.copy(commands = commands))))
+        if (actionRisk.blocked) {
+            appendLog("Blocked ${shizule.name}/${action.label}: critical risk")
+            showOutput(
+                "${shizule.name} Blocked",
+                buildString {
+                    append("Shizulu blocked this action because it contains critical risk patterns.\n\n")
+                    actionRisk.commandRisks.filter { it.blocked }.forEach { risk ->
+                        append(risk.command).append('\n')
+                        append(risk.reasons.joinToString("; ")).append("\n\n")
+                    }
+                }
+            )
+            return
+        }
+        if (actionRisk.level.atLeast(RiskLevel.HIGH)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("High risk action")
+                .setMessage("${actionRisk.summary}\n\nRestore: ${if (actionRisk.restoreAvailable) "partial or declared restore available" else "no restore declared"}\n\nRun only if you understand what this changes.")
+                .setNegativeButton("Dry Run") { _, _ -> dryRunAction(shizule, action, commands) }
+                .setPositiveButton("Run") { _, _ -> executeResolvedAction(shizule, action, commands) }
+                .show()
+            return
+        }
+
+        executeResolvedAction(shizule, action, commands)
+    }
+
+    private fun executeResolvedAction(shizule: Shizule, action: ShizuleAction, commands: List<ShizuleCommand>) {
         if (executionMode == ExecutionMode.WIRELESS_ADB) {
             runWirelessAdbAction(shizule, action, commands)
             return
@@ -2620,6 +2842,7 @@ class MainActivity : Activity() {
             var failed = false
             appendLog("Started ${shizule.name}/${action.label} (${commands.size} command(s))")
             runCatching {
+                snapshotRestoreValues(shizule, action, commands, ShizukuCommandRunner(currentService), output)
                 commands.forEachIndexed { index, command ->
                     output.append("$ ").append(command.exec).append('\n')
                     val result = currentService.runShizuleCommand(shizule.id, command.exec)
@@ -2658,7 +2881,11 @@ class MainActivity : Activity() {
         appendLog("Wireless ADB started ${shizule.name}/${action.label} (${commands.size} command(s))")
         executor.execute {
             runCatching {
-                WirelessAdbRunner(applicationContext).run(shizule.id, resolvedAction, pairingCode, port)
+                val output = StringBuilder()
+                val runner = WirelessAdbCommandRunner(applicationContext, pairingCode, port)
+                snapshotRestoreValues(shizule, action, commands, runner, output)
+                val result = WirelessAdbRunner(applicationContext).run(shizule.id, resolvedAction, pairingCode, port)
+                WirelessAdbResult((output.toString() + result.output).trim())
             }
                 .onSuccess { result ->
                     val failed = result.output.lineSequence().any { it.startsWith("exit=") && it != "exit=0" }
@@ -2674,6 +2901,127 @@ class MainActivity : Activity() {
                     mainHandler.post { showOutput("${shizule.name} Wireless ADB", "Failed: $message") }
                 }
         }
+    }
+
+    private fun snapshotRestoreValues(
+        shizule: Shizule,
+        action: ShizuleAction,
+        commands: List<ShizuleCommand>,
+        runner: CommandRunner,
+        output: StringBuilder
+    ) {
+        val probes = RestorePlanner.probesFor(commands)
+        if (probes.isEmpty() || !shizule.restore.snapshotBeforeRun) {
+            output.append("Restore snapshot: none available for this action.\n\n")
+            return
+        }
+        output.append("Restore snapshot: checking ").append(probes.size).append(" value(s).\n")
+        val restoreCommands = mutableListOf<String>()
+        probes.forEach { probe ->
+            val result = runner.run(shizule.id, ShizuleCommand(probe.command), 10_000)
+            val restore = RestorePlanner.restoreCommand(probe, result.stdout)
+            output.append("$ ").append(probe.command).append('\n')
+            output.append(result.stdout.trim()).append('\n')
+            if (restore != null) {
+                restoreCommands += restore
+                output.append("restore=").append(restore).append('\n')
+            } else {
+                output.append("restore=unavailable\n")
+            }
+        }
+        if (restoreCommands.isNotEmpty()) {
+            saveRestoreHistory(
+                RestoreEntry(
+                    moduleId = shizule.id,
+                    actionId = action.id,
+                    timestamp = System.currentTimeMillis(),
+                    probes = restoreCommands.mapIndexed { index, command ->
+                        RestoreProbe(command = "echo restore-${index + 1}", restoreTemplate = command, label = "restore-${index + 1}")
+                    }
+                )
+            )
+            output.append("Restore snapshot saved. Restore coverage is partial unless the module declares full restore support.\n\n")
+        } else {
+            output.append("No restorable values could be captured.\n\n")
+        }
+    }
+
+    private fun saveRestoreHistory(entry: RestoreEntry) {
+        val existing = loadRestoreHistory().toMutableList()
+        existing.add(0, entry)
+        val next = JSONArray().apply {
+            existing.take(30).forEach { put(it.toJson()) }
+        }
+        settingsPrefs.edit().putString(KEY_RESTORE_HISTORY, next.toString()).apply()
+        appendLog("Restore snapshot saved for ${entry.moduleId}/${entry.actionId}: ${entry.probes.size} command(s)")
+    }
+
+    private fun loadRestoreHistory(): List<RestoreEntry> {
+        val raw = settingsPrefs.getString(KEY_RESTORE_HISTORY, "[]").orEmpty()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) add(RestoreEntry.fromJson(array.getJSONObject(index)))
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun restoreLastForModule(moduleId: String) {
+        val entry = loadRestoreHistory().firstOrNull { it.moduleId == moduleId }
+        if (entry == null) {
+            Toast.makeText(this, "No restore snapshot for this module yet.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val commands = entry.probes.map { ShizuleCommand(it.restoreTemplate) }
+        val action = ShizuleAction(
+            id = "restore_last",
+            label = "Restore Last",
+            variables = emptyList(),
+            commands = commands,
+            stopOnError = false
+        )
+        val shizule = store.list().firstOrNull { it.id == moduleId } ?: return
+        appendLog("Restore last requested for $moduleId: ${commands.size} command(s)")
+        runResolvedAction(shizule.copy(actions = listOf(action)), action, commands)
+    }
+
+    private fun showModuleDetails(shizule: Shizule) {
+        val risk = ShizuleRiskScanner.scan(shizule)
+        val trust = ShizuleTrust.evaluate(shizule)
+        val compat = CompatibilityScanner.scan(
+            shizule,
+            executionMode,
+            runCatching { Shizuku.pingBinder() && hasShizukuPermission() }.getOrDefault(false),
+            wirelessAdbConfigured()
+        )
+        val history = loadRestoreHistory().filter { it.moduleId == shizule.id }.take(5)
+        showOutput(
+            shizule.name,
+            buildString {
+                append("ID: ").append(shizule.id).append('\n')
+                append("Version: ").append(shizule.version).append(" (").append(shizule.versionCode).append(")\n")
+                append("Author: ").append(shizule.author.name).append('\n')
+                append("Tier: ").append(shizule.tier.ifBlank { "Community module" }).append('\n')
+                append("Trust: ").append(trust.label).append(" - ").append(trust.message).append('\n')
+                append("Risk: ").append(risk.level).append(" - ").append(risk.summary).append('\n')
+                append("Compatibility: ").append(compat.label()).append('\n')
+                (compat.reasons + compat.warnings).distinct().forEach { append("- ").append(it).append('\n') }
+                append("Restore: ").append(if (risk.restoreAvailable) if (risk.restorePartial) "Partial/snapshot" else "Declared" else "Not declared").append('\n')
+                if (history.isNotEmpty()) {
+                    append("\nRestore history:\n")
+                    history.forEach { append("- ").append(it.summary()).append('\n') }
+                }
+                if (shizule.changelog.isNotEmpty()) append("\nChangelog:\n").append(shizule.changelog.joinToString("\n") { "- $it" }).append('\n')
+                if (shizule.knownIssues.isNotEmpty()) append("\nKnown issues:\n").append(shizule.knownIssues.joinToString("\n") { "- $it" }).append('\n')
+                append("\nCommand risk:\n")
+                risk.commandRisks.forEach { commandRisk ->
+                    append(commandRisk.index).append(". ").append(commandRisk.level)
+                        .append(if (commandRisk.blocked) " BLOCKED" else "")
+                        .append(": ").append(commandRisk.command).append('\n')
+                    commandRisk.reasons.forEach { append("   - ").append(it).append('\n') }
+                }
+            }
+        )
     }
 
     private fun variablesForAction(shizule: Shizule, action: ShizuleAction): List<ShizuleVariable> {
@@ -2843,8 +3191,11 @@ class MainActivity : Activity() {
         return action.commands.map { command ->
             ShizuleCommand(
                 exec = VARIABLE_PATTERN.replace(command.exec) { match ->
-                    values[match.groupValues[1]].orEmpty()
-                }
+                    val value = values[match.groupValues[1]].orEmpty()
+                    if (value.matches(NUMBER_VALUE_PATTERN)) value else value.shellQuote()
+                },
+                explanation = command.explanation,
+                mutates = command.mutates
             )
         }
     }
@@ -3241,14 +3592,45 @@ class MainActivity : Activity() {
             }
 
             actions.forEachIndexed { actionIndex, (shizule, action) ->
+                val actionRisk = ShizuleRiskScanner.scan(shizule.copy(actions = listOf(action)))
+                val compat = CompatibilityScanner.scan(
+                    shizule,
+                    executionMode,
+                    runCatching { Shizuku.pingBinder() && hasShizukuPermission() }.getOrDefault(false),
+                    wirelessAdbConfigured()
+                )
+                val probes = RestorePlanner.probesFor(action.commands)
                 append(actionIndex + 1).append(". ").append(shizule.name).append(" / ").append(action.label).append('\n')
                 append("   Module: ").append(shizule.id).append('\n')
+                append("   Risk: ").append(actionRisk.level).append(" - ").append(actionRisk.summary).append('\n')
+                append("   Compatibility: ").append(compat.label()).append('\n')
+                (compat.reasons + compat.warnings).distinct().forEach { append("   - ").append(it).append('\n') }
+                append("   Restore: ").append(
+                    when {
+                        action.restoreCommands.isNotEmpty() -> "Action restore commands declared."
+                        probes.isNotEmpty() -> "Partial snapshot possible: ${probes.joinToString(", ") { it.label }}."
+                        else -> "No automatic restore snapshot available."
+                    }
+                ).append('\n')
+                if (action.prechecks.isNotEmpty()) {
+                    append("   Prechecks:\n")
+                    action.prechecks.forEach { append("      ? ").append(it.exec).append('\n') }
+                }
                 if (action.commands.isEmpty()) {
                     append("   No commands in this action.\n")
                 } else {
                     action.commands.forEachIndexed { commandIndex, command ->
-                        append("   ").append(commandIndex + 1).append(") ").append(command.exec).append('\n')
+                        val commandRisk = ShizuleRiskScanner.scanCommand(command.exec, commandIndex + 1)
+                        append("   ").append(commandIndex + 1).append(") ").append(commandRisk.level)
+                            .append(if (commandRisk.blocked) " BLOCKED" else "")
+                            .append(" - ").append(commandRisk.reasons.joinToString("; ")).append('\n')
+                        append("      $ ").append(command.exec).append('\n')
+                        if (command.explanation.isNotBlank()) append("      ").append(command.explanation).append('\n')
                     }
+                }
+                if (action.postchecks.isNotEmpty()) {
+                    append("   Postchecks:\n")
+                    action.postchecks.forEach { append("      ? ").append(it.exec).append('\n') }
                 }
                 if (actionIndex < actions.lastIndex) append('\n')
             }
@@ -3989,6 +4371,22 @@ class MainActivity : Activity() {
             .ifEmpty { listOf("0") }
     }
 
+    private fun StoreItem.versionCodeHint(): Int {
+        return versionParts(version)
+            .take(3)
+            .fold(0) { acc, part -> (acc * 1000) + (part.toIntOrNull() ?: 0) }
+    }
+
+    private fun riskRank(risk: String): Int {
+        return when (risk.lowercase(Locale.US)) {
+            "low" -> 0
+            "medium" -> 1
+            "high" -> 2
+            "critical" -> 3
+            else -> 1
+        }
+    }
+
     private fun String.isSafeShellToken(): Boolean {
         return matches(SAFE_SHELL_TOKEN_PATTERN)
     }
@@ -4033,6 +4431,8 @@ class MainActivity : Activity() {
         private const val KEY_UPDATER_STATUS = "updater_status"
         private const val KEY_LATEST_RELEASE = "latest_release"
         private const val KEY_LOCAL_STORE_ITEMS = "local_store_items"
+        private const val KEY_STORE_CACHE = "store_cache"
+        private const val KEY_RESTORE_HISTORY = "restore_history"
         private const val KEY_WIRELESS_ADB_KEEP_ALIVE = "wireless_adb_keep_alive"
         private const val KEY_ADB_PAIRING_CODE = "adb_pairing_code"
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"

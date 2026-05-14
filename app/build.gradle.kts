@@ -71,4 +71,6 @@ dependencies {
     implementation("androidx.core:core:1.16.0")
     implementation("androidx.annotation:annotation:1.9.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

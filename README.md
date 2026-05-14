@@ -17,6 +17,8 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 - Choose between the Shizuku backend and standalone Wireless ADB execution.
 - Persistent Wireless ADB keep-alive service with Android battery optimization exemption flow.
 - Dry Run mode previews and logs commands without executing them.
+- Shared risk scanning blocks critical/destructive/root-only/bypass-looking commands and explains risky shell operations before install or run.
+- Restore snapshots capture restorable settings values before supported actions run, then expose Restore Last from installed modules.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and optional Blue, Jade, Violet, or Rose accents.
 - Profiles run grouped module actions like `Comfort Setup`, `Clean Pixel`, and `Stock Restore`.
 - Create custom profiles from installed shizule actions.
@@ -29,11 +31,22 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "id": "com.example.my_shizule",
   "name": "My Shizule",
   "version": "1.0.0",
+  "versionCode": 1,
   "description": "Short description shown in Shizulu.",
+  "author": {
+    "name": "Example Author",
+    "url": "https://example.com",
+    "verified": false
+  },
+  "tags": ["settings", "restore"],
+  "categories": ["Display"],
+  "screenshots": [],
+  "updateUrl": "https://example.com/my-shizule.json",
+  "changelog": ["Initial release"],
   "tier": "Community module",
   "compatibility": {
     "worksOn": ["pixel", "samsung"],
@@ -42,6 +55,18 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
     "requires": ["shizuku", "adb"]
   },
   "permissions": ["system_settings", "restore"],
+  "safety": {
+    "risk": "Medium",
+    "notes": "Changes animation scale settings.",
+    "reversible": true,
+    "requiresReview": true
+  },
+  "restore": {
+    "level": "snapshot",
+    "notes": "Shizulu can snapshot settings values before running.",
+    "snapshotBeforeRun": true
+  },
+  "knownIssues": [],
   "signature": {
     "author": "Example Author",
     "sha256": "optional-content-digest"
@@ -50,9 +75,24 @@ This is not a replacement build of the official Shizuku app. Shizulu is a separa
     {
       "id": "apply",
       "label": "Apply",
+      "stopOnError": true,
+      "prechecks": [
+        {
+          "exec": "settings get global animator_duration_scale",
+          "mutates": false
+        }
+      ],
       "commands": [
         {
-          "exec": "settings put global animator_duration_scale 0"
+          "exec": "settings put global animator_duration_scale 0",
+          "explanation": "Sets Android animator duration scale to off.",
+          "mutates": true
+        }
+      ],
+      "restoreCommands": [
+        {
+          "exec": "settings put global animator_duration_scale 1",
+          "mutates": true
         }
       ]
     }
@@ -76,7 +116,9 @@ SHIZULU_MODULE_ID=<installed module id>
 
 Keep shizules readable and only install files you trust. Shizulu intentionally runs actions only when you tap an action button.
 
-The optional `signature` metadata is informational for now; it is a trust signal for authorship, not cryptographic verification yet.
+Schema 1 modules still work. Shizulu normalizes older modules into the newer internal model with safe defaults.
+
+The optional `signature.sha256` metadata is treated as an integrity check only. A matching digest can show content was not changed; it does not prove identity unless a future real crypto signature system is added.
 
 Optional Store metadata helps Shizulu warn before install:
 
@@ -85,6 +127,17 @@ Optional Store metadata helps Shizulu warn before install:
 - `compatibility.requires`: supported backends such as `shizuku` or `adb`.
 - `tier`: `Community module`, `Reviewed module`, `Verified author`, or `Official Shizulu module`.
 - `permissions`: declared capability tags such as `system_settings`, `package_manager`, `appops`, `permissions`, `rro`, `app_data`, `diagnostics`, and `restore`.
+- `safety`: risk notes and whether the module expects review.
+- `restore`: restore level, restore notes, and whether Shizulu should snapshot readable values before running.
+- `knownIssues`, `changelog`, `screenshots`, and `updateUrl`: Store/detail metadata.
+
+## Risk Scanner
+
+Shizulu scans every command before install, dry run, and live execution. It classifies commands as Low, Medium, High, or Critical and explains why.
+
+Critical commands are blocked when they look destructive, root-only, or bypass-oriented. That includes broad recursive deletes, `dd`/`mkfs`/`mount`/`setenforce`, disabling core system packages, network downloads piped to shell, Magisk/root commands, and banking/Play Integrity/DRM/anti-cheat bypass attempts.
+
+High-risk commands such as package disabling, AppOps writes, app data clearing, advanced package manager commands, and DeviceConfig changes require an extra run warning.
 
 ## Manager features
 

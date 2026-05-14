@@ -34,6 +34,13 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Shizule JSON and Store entries now support compatibility metadata: `worksOn`, `androidMin`, `androidMax`, and `requires`.
 - Store cards and install previews now show verified tiers, compatibility warnings, and module permission statements before install.
 - Template Gallery adds working starter shizules for animation tuning, display debugging, AppOps viewing, screen timeout presets, and notification permission grants.
+- Expanded shizule schema normalization keeps old modules working while adding author info, version codes, changelogs, categories, screenshots, update URLs, safety notes, restore metadata, and known issues.
+- New shared risk scanner classifies settings, AppOps, package manager, `cmd`, `dumpsys`, `am`, `device_config`, destructive file commands, package disabling, data clearing, network-script execution, and bypass-looking commands.
+- Install and run flows now block critical commands, warn before high-risk actions, show per-command risk reasons, and label SHA digests honestly as integrity checks instead of identity verification.
+- Dry Run reports now include expanded commands, risk per command, compatibility scan results, restore snapshot coverage, prechecks, postchecks, and plain-English command reasons without executing mutating commands.
+- Before real runs, Shizulu snapshots restorable `settings put` and `device_config put` values when readable, stores restore history, and exposes Restore Last per installed module.
+- Store now has search, risk filters, sorting, cached offline/rate-limit fallback, validation before install, compatibility badges, trust labels, and risk badges.
+- Added a clean `CommandRunner` abstraction plus unit tests for schema validation, risk scanning, restore planning, and digest/tamper labeling.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.
