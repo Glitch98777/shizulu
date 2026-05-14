@@ -22,7 +22,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.Window
@@ -43,7 +45,6 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -665,7 +666,7 @@ class MainActivity : Activity() {
                 spacedParams(top = 10)
             )
             addView(
-                compactButton("Detect Root Requests", filled = false) { detectRootRequests() },
+                compactButton("Spoof Root Apps", filled = false) { showSpoofRootAppsManager() },
                 spacedParams(top = 10)
             )
         }
@@ -1251,6 +1252,7 @@ class MainActivity : Activity() {
             "Max ADB Elevation",
             "Run su -c command",
             "Self-test",
+            "Spoof root app grants",
             "ColorBlendr compatibility",
             "Install shell interceptors",
             "Install bridge shizule",
@@ -1267,12 +1269,13 @@ class MainActivity : Activity() {
                     1 -> runSuBridgeElevation()
                     2 -> showSuBridgeCommandDialog()
                     3 -> runSuBridgeSelfTest()
-                    4 -> showColorBlendrCompatibility()
-                    5 -> runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
-                    6 -> installSuBridgeShizule()
-                    7 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
-                    8 -> showSuBridgeStatus()
-                    9 -> showSuBridgeApiSample()
+                    4 -> showSpoofRootAppsManager()
+                    5 -> showColorBlendrCompatibility()
+                    6 -> runPowerCommand("Install Shell Interceptors", shellInterceptorInstallCommand(), "com.shizulu.shell_interceptor")
+                    7 -> installSuBridgeShizule()
+                    8 -> runPowerCommand("Install SU Bridge Script", suBridgeInstallCommand(), "com.shizulu.su_bridge")
+                    9 -> showSuBridgeStatus()
+                    10 -> showSuBridgeApiSample()
                 }
             }
             .setNegativeButton("OK", null)
@@ -1350,101 +1353,137 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun detectRootRequests() {
+    private fun showSpoofRootAppsManager() {
         settingsPrefs.edit().putBoolean(KEY_SU_BRIDGE_ENABLED, true).apply()
-        appendLog("Root request detection scan started")
-        runPowerCommand(
-            "Root Request Detection",
-            rootRequestDetectionCommand(),
-            "com.shizulu.root_request_detector"
-        ) { output ->
-            handleRootRequestDetectionOutput(output)
+        val apps = loadInstalledAppGrantCandidates()
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val summary = TextView(this).apply {
+            textSize = 13f
+            setTextColor(COLORS.muted)
+            setPadding(0, 0, 0, dp(8))
         }
-    }
-
-    private fun handleRootRequestDetectionOutput(raw: String): String {
-        val packages = raw.lineSequence()
-            .mapNotNull { line ->
-                when {
-                    line.startsWith("SHIZULU_ROOT_SIGNAL_PACKAGE=") -> line.substringAfter("=")
-                    line.startsWith("SHIZULU_ROOT_SIGNAL_FOREGROUND=") -> line.substringAfter("=")
-                    else -> null
-                }?.trim()
+        val search = EditText(this).apply {
+            hint = "Search apps or package names"
+            textSize = 14f
+            setSingleLine(true)
+            setTextColor(COLORS.ink)
+            setHintTextColor(COLORS.muted)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = roundedRect(COLORS.surface, dp(8), COLORS.outline, 1)
+        }
+        val scroll = ScrollView(this).apply {
+            addView(list)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(370)).apply {
+                topMargin = dp(10)
             }
-            .filter { it.matches(PACKAGE_NAME_PATTERN) && it != packageName }
-            .distinct()
-            .toList()
-
-        if (packages.isNotEmpty()) {
-            appendLog("Root request detection found candidates: ${packages.joinToString(", ")}")
-            mainHandler.post { showDetectedRootPrompts(packages, raw) }
-        } else {
-            appendLog("Root request detection found no package candidates")
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(summary)
+            addView(search)
+            addView(scroll)
         }
 
-        return buildString {
-            append("Best-effort root request scan complete.\n\n")
-            if (packages.isEmpty()) {
-                append("No package candidates were visible in logcat/window/process signals.\n")
-                append("Some apps call /system/bin/su privately, and Android does not expose that failed exec to another normal APK.\n")
-            } else {
-                append("Detected likely root request package candidates:\n")
-                packages.forEach { append("- ").append(it).append('\n') }
-                append("\nShizulu opened the grant access prompt. If allowed, that package is approved for Shizulu fake-root routing, so compatible retries through the provider/interceptor/custom su path can receive a granted response and run ADB/Shizuku-backed commands.\n")
+        fun render(query: String) {
+            val allowed = settingsPrefs.getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
+            val normalized = query.trim().lowercase(Locale.US)
+            val filtered = apps.filter {
+                normalized.isBlank() ||
+                    it.label.lowercase(Locale.US).contains(normalized) ||
+                    it.packageName.lowercase(Locale.US).contains(normalized)
             }
-            append("\nRaw scan:\n")
-            append(raw.ifBlank { "No output." })
-        }
-    }
-
-    private fun showDetectedRootPrompts(packages: List<String>, raw: String) {
-        val alreadyAllowed = settingsPrefs
-            .getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet())
-            .orEmpty()
-        packages
-            .filterNot { it in alreadyAllowed }
-            .take(MAX_DETECTED_ROOT_PROMPTS)
-            .forEach { packageName ->
-                val requestId = UUID.randomUUID().toString()
-                settingsPrefs.edit()
-                    .putString("${SuBridgeProvider.KEY_ROOT_DECISION_PREFIX}$requestId", SuBridgeProvider.DECISION_PENDING)
-                    .apply()
-                val label = resolveApplicationLabel(packageName)
-                val commandPreview = buildString {
-                    append("Detected by protected ADB/Shizuku log scan.\n")
-                    append(raw.lineSequence()
-                        .filter { line ->
-                            line.contains(packageName) ||
-                                line.contains("su", ignoreCase = true) ||
-                                line.contains("root", ignoreCase = true)
-                        }
-                        .take(8)
-                        .joinToString("\n")
-                    )
-                }.take(MAX_ROOT_DETECTION_PREVIEW)
-                runCatching {
-                    startActivity(
-                        Intent(this, RootAccessRequestActivity::class.java)
-                            .putExtra(RootAccessRequestActivity.EXTRA_REQUEST_ID, requestId)
-                            .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_NAME, packageName)
-                            .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_LABEL, label)
-                            .putExtra(RootAccessRequestActivity.EXTRA_METHOD, "protected-log root detection")
-                            .putExtra(RootAccessRequestActivity.EXTRA_COMMAND, commandPreview)
-                    )
-                }.onSuccess {
-                    appendLog("Root access prompt opened for detected package: $packageName")
-                }.onFailure {
-                    settingsPrefs.edit().remove("${SuBridgeProvider.KEY_ROOT_DECISION_PREFIX}$requestId").apply()
-                    appendLog("Root access prompt failed for detected package $packageName: ${it.message ?: it.javaClass.simpleName}")
+            summary.text = "${allowed.size} spoof-root grants. Bridge: enabled. Apps must use Shizulu's provider, custom /data/local/tmp/su path, or shell interceptors for commands to run through ADB/Shizuku."
+            list.removeAllViews()
+            if (filtered.isEmpty()) {
+                list.addView(TextView(this).apply {
+                    text = "No apps found."
+                    textSize = 14f
+                    setTextColor(COLORS.muted)
+                    setPadding(0, dp(16), 0, dp(16))
+                })
+                return
+            }
+            filtered.take(MAX_SPOOF_ROOT_APP_ROWS).forEach { app ->
+                val granted = app.packageName in allowed
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(8), 0, dp(8))
                 }
+                val text = TextView(this).apply {
+                    text = buildString {
+                        append(app.label)
+                        if (app.system) append("  system")
+                        append('\n')
+                        append(app.packageName)
+                    }
+                    textSize = 13f
+                    setTextColor(COLORS.ink)
+                }
+                val button = compactButton(if (granted) "Revoke" else "Grant", filled = !granted) {
+                    setSpoofRootGrant(app.packageName, !granted)
+                    render(search.text.toString())
+                }
+                row.addView(text, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(button, LinearLayout.LayoutParams(dp(92), dp(38)).apply { leftMargin = dp(10) })
+                list.addView(row)
             }
+            if (filtered.size > MAX_SPOOF_ROOT_APP_ROWS) {
+                list.addView(TextView(this).apply {
+                    text = "Showing first $MAX_SPOOF_ROOT_APP_ROWS results. Search to narrow it down."
+                    textSize = 12f
+                    setTextColor(COLORS.muted)
+                    setPadding(0, dp(10), 0, 0)
+                })
+            }
+        }
+
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                render(s?.toString().orEmpty())
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        render("")
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Spoof Root Apps")
+            .setMessage("Manually grant apps Shizulu spoof root. Granted apps can receive an OK root-style response only through Shizulu-compatible routes; Android's hardcoded system su path still needs real root.")
+            .setView(root)
+            .setPositiveButton("Done", null)
+            .show()
     }
 
-    private fun resolveApplicationLabel(packageName: String): String {
-        return runCatching {
-            val info = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(info).toString()
-        }.getOrDefault(packageName)
+    private fun loadInstalledAppGrantCandidates(): List<AppGrantCandidate> {
+        return packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+            .filter { it.packageName != packageName }
+            .map { info ->
+                AppGrantCandidate(
+                    label = packageManager.getApplicationLabel(info).toString().ifBlank { info.packageName },
+                    packageName = info.packageName,
+                    system = (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                )
+            }
+            .sortedWith(compareBy<AppGrantCandidate> { it.system }.thenBy { it.label.lowercase(Locale.US) })
+    }
+
+    private fun setSpoofRootGrant(packageName: String, granted: Boolean) {
+        if (!packageName.matches(PACKAGE_NAME_PATTERN)) {
+            Toast.makeText(this, "Invalid package name.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val current = settingsPrefs.getStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
+        val updated = current.toMutableSet().apply {
+            if (granted) add(packageName) else remove(packageName)
+        }
+        settingsPrefs.edit()
+            .putBoolean(KEY_SU_BRIDGE_ENABLED, true)
+            .putStringSet(SuBridgeProvider.KEY_ALLOWED_ROOT_PACKAGES, updated)
+            .apply()
+        appendLog("Spoof root ${if (granted) "granted to" else "revoked from"} $packageName")
+        Toast.makeText(this, "Spoof root ${if (granted) "granted" else "revoked"}", Toast.LENGTH_SHORT).show()
     }
 
     private fun runSuBridgeSelfTest() {
@@ -2336,44 +2375,6 @@ class MainActivity : Activity() {
         """.trimIndent()
     }
 
-    private fun rootRequestDetectionCommand(): String {
-        return """
-            echo "Shizulu root request detection"
-            echo "This scan can only see visible logcat/window/process signals."
-            echo
-            tmp=/data/local/tmp/shizulu-root-detect.log
-            : > "${'$'}tmp"
-            echo "[foreground]"
-            dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp|topApp|focusedApp' | tail -n 8 | tee -a "${'$'}tmp"
-            dumpsys activity activities 2>/dev/null | grep -E 'topResumedActivity|mResumedActivity|ResumedActivity|mLastPausedActivity' | tail -n 8 | tee -a "${'$'}tmp"
-            dumpsys activity processes 2>/dev/null | grep -E 'ProcessRecord|top-activity|foreground|visible' | tail -n 30 | tee -a "${'$'}tmp"
-            echo
-            echo "[protected root-ish logcat]"
-            logcat -b all -d -v threadtime -t 1500 2>/dev/null | grep -Ei '(^|[^a-z])(su|/su|libsu|root|magisk|kernelsu|ksu|superuser|permission denied|not rooted|root denied|exec.*denied|cannot execute|no such file.*su)([^a-z]|${'$'})' | tail -n 120 | tee -a "${'$'}tmp"
-            echo
-            echo "[package manager recent deny/search hints]"
-            dumpsys package 2>/dev/null | grep -Ei 'requested permissions|android.permission|sharedUser|Packages:' | grep -Ei 'shizuku|root|su|shell|dump|logs|secure|settings' | tail -n 60 | tee -a "${'$'}tmp"
-            echo
-            echo "[active su processes]"
-            ps -A 2>/dev/null | grep -Ei '(^|/)(su|magisk|ksud|superuser)( |${'$'})' | tee -a "${'$'}tmp" || true
-            echo
-            echo "[candidate packages]"
-            for pkg in $(pm list packages -3 2>/dev/null | sed 's/^package://'); do
-              if grep -Fq "${'$'}pkg" "${'$'}tmp"; then
-                echo "SHIZULU_ROOT_SIGNAL_PACKAGE=${'$'}pkg"
-              fi
-            done
-            focused="$(grep -Eo '([A-Za-z][A-Za-z0-9_]*\.)+[A-Za-z0-9_]+' "${'$'}tmp" | grep -v '^android\.' | grep -v '^com.android.systemui' | head -n 1)"
-            if [ -n "${'$'}focused" ]; then
-              echo "SHIZULU_ROOT_SIGNAL_FOREGROUND=${'$'}focused"
-            fi
-            echo
-            echo "Detection notes:"
-            echo "- Hardcoded /system/bin/su calls cannot be answered after they already failed."
-            echo "- Detected packages can be approved for future Shizulu bridge/interceptor/custom su path retries."
-        """.trimIndent()
-    }
-
     private fun blankShizuleTemplate(): String {
         return shizuleJson(
             id = "com.example.my_shizule",
@@ -3139,8 +3140,7 @@ class MainActivity : Activity() {
         private const val KEY_ADB_PAIR_PORT = "adb_pair_port"
         private const val KEY_ADB_CONNECT_PORT = "adb_connect_port"
         private const val MAX_LOG_LINES = 160
-        private const val MAX_DETECTED_ROOT_PROMPTS = 3
-        private const val MAX_ROOT_DETECTION_PREVIEW = 600
+        private const val MAX_SPOOF_ROOT_APP_ROWS = 80
         private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/Glitch98777/shizulu/releases/latest"
         private const val GITHUB_COMPARE_URL = "https://api.github.com/repos/Glitch98777/shizulu/compare/%s...%s"
         private val PACKAGE_NAME_PATTERN = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
@@ -3194,6 +3194,12 @@ data class ProfileStep(
 data class ProfileChoice(
     val label: String,
     val step: ProfileStep
+)
+
+data class AppGrantCandidate(
+    val label: String,
+    val packageName: String,
+    val system: Boolean
 )
 
 data class GithubRelease(

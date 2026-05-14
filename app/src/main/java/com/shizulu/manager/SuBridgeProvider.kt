@@ -3,13 +3,10 @@ package com.shizulu.manager
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
-import android.os.SystemClock
-import java.util.UUID
 
 class SuBridgeProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
@@ -61,49 +58,12 @@ class SuBridgeProvider : ContentProvider() {
         val allowed = prefs.getStringSet(KEY_ALLOWED_ROOT_PACKAGES, emptySet()).orEmpty()
         if (packages.any { it in allowed }) return null
 
-        val requestId = UUID.randomUUID().toString()
-        val decisionKey = "$KEY_ROOT_DECISION_PREFIX$requestId"
-        prefs.edit().putString(decisionKey, DECISION_PENDING).apply()
-
         val label = resolveLabel(context, packageName)
-        val launched = runCatching {
-            context.startActivity(
-                Intent(context, RootAccessRequestActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .putExtra(RootAccessRequestActivity.EXTRA_REQUEST_ID, requestId)
-                    .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_NAME, packageName)
-                    .putExtra(RootAccessRequestActivity.EXTRA_PACKAGE_LABEL, label)
-                    .putExtra(RootAccessRequestActivity.EXTRA_METHOD, method)
-                    .putExtra(RootAccessRequestActivity.EXTRA_COMMAND, command.take(MAX_COMMAND_PREVIEW))
-            )
-        }.isSuccess
-
-        if (!launched) {
-            prefs.edit().remove(decisionKey).apply()
-            return bridgeBundle(false, "Could not show Shizulu root access prompt for $label.", "")
-        }
-
-        val deadline = SystemClock.elapsedRealtime() + ACCESS_REQUEST_TIMEOUT_MS
-        while (SystemClock.elapsedRealtime() < deadline) {
-            when (prefs.getString(decisionKey, DECISION_PENDING)) {
-                DECISION_ALLOW -> {
-                    val updated = allowed.toMutableSet().apply { addAll(packages) }
-                    prefs.edit()
-                        .putStringSet(KEY_ALLOWED_ROOT_PACKAGES, updated)
-                        .remove(decisionKey)
-                        .apply()
-                    return null
-                }
-                DECISION_DENY -> {
-                    prefs.edit().remove(decisionKey).apply()
-                    return bridgeBundle(false, "Root access denied for $label.", "")
-                }
-            }
-            Thread.sleep(REQUEST_POLL_MS)
-        }
-
-        prefs.edit().remove(decisionKey).apply()
-        return bridgeBundle(false, "Root access prompt timed out for $label.", "")
+        return bridgeBundle(
+            false,
+            "Spoof root is not granted for $label. Open Shizulu > Tools > Rootless Power Tools > Spoof Root Apps, grant ${packages.joinToString()}, then retry.",
+            ""
+        )
     }
 
     private fun resolveLabel(context: Context, packageName: String): String {
@@ -215,17 +175,10 @@ class SuBridgeProvider : ContentProvider() {
         const val EXTRA_STDIN = "stdin"
         const val EXTRA_MODULE_ID = "moduleId"
         const val KEY_ALLOWED_ROOT_PACKAGES = "su_bridge_allowed_root_packages"
-        const val KEY_ROOT_DECISION_PREFIX = "su_bridge_root_decision_"
-        const val DECISION_PENDING = "pending"
-        const val DECISION_ALLOW = "allow"
-        const val DECISION_DENY = "deny"
         private const val DEFAULT_MODULE_ID = "com.shizulu.external.su"
         private const val PREFS = "shizulu_settings"
         private const val ROOT_UID = 0
         private const val SHELL_UID = 2000
-        private const val ACCESS_REQUEST_TIMEOUT_MS = 30_000L
-        private const val REQUEST_POLL_MS = 250L
-        private const val MAX_COMMAND_PREVIEW = 600
         private val IGNORED_SU_FLAGS = setOf("-p", "-l", "-m", "-mm", "-M", "--mount-master", "--preserve-environment")
     }
 }
