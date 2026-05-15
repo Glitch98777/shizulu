@@ -26,6 +26,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Bottom navigation now has a Shizule Store tab with a cart icon, public index loading, install/reinstall buttons, and a GitHub submission path for community shizules.
 - Module Maker now keeps Install/Publish controls visible below a fixed-height scrolling JSON editor, even for very long shizules.
 - Store publishing now lives in Create: publishing installs the shizule, makes it visible in your Store immediately, and opens a prefilled GitHub submission.
+- Create flows now separate Publish from Publish & Install, so a builder-made shizule can be submitted to the Store without also installing it locally.
 - Public Store refresh also reads open `[Store]` GitHub issues, so community shizules can become visible from GitHub without waiting for a manual index merge.
 - Store cards now show Install, Update, or Already up to date based on the installed shizule version instead of saying Reinstall.
 - Update checks no longer depend on GitHub's compare API, and fall back to the public latest-release redirect if the releases API returns HTTP 403.

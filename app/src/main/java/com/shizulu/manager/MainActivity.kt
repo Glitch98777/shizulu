@@ -1663,7 +1663,15 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun showInstallReview(raw: String, shizule: Shizule, source: StoreItem?, onInstall: () -> Unit) {
+    private fun showInstallReview(
+        raw: String,
+        shizule: Shizule,
+        source: StoreItem?,
+        title: String = "Review install",
+        actionLabel: String = "Install",
+        blockedTitle: String = "Install Blocked",
+        onInstall: () -> Unit
+    ) {
         val validation = Shizule.validate(raw)
         val riskReport = ShizuleRiskScanner.scan(shizule)
         val trust = ShizuleTrust.evaluate(shizule)
@@ -1764,13 +1772,13 @@ class MainActivity : Activity() {
         }
 
         val builder = android.app.AlertDialog.Builder(this)
-            .setTitle("Review install")
+            .setTitle(title)
             .setView(content)
             .setNegativeButton("Cancel", null)
         if (riskReport.blocked || trust.level == TrustLevel.TAMPERED || !validation.isValid) {
             builder.setPositiveButton("Blocked") { _, _ ->
                 showOutput(
-                    "Install Blocked",
+                    blockedTitle,
                     buildString {
                         if (!validation.isValid) append("Validation failed:\n").append(validation.errors.joinToString("\n")).append("\n\n")
                         if (trust.level == TrustLevel.TAMPERED) append(trust.message).append("\n\n")
@@ -1779,8 +1787,8 @@ class MainActivity : Activity() {
                 )
             }
         } else {
-            builder.setPositiveButton("Install") { _, _ ->
-                appendLog("Install approved: ${shizule.name} (${shizule.id})")
+            builder.setPositiveButton(actionLabel) { _, _ ->
+                appendLog("$actionLabel approved: ${shizule.name} (${shizule.id})")
                 onInstall()
             }
         }
@@ -1802,6 +1810,27 @@ class MainActivity : Activity() {
         refreshStoreList()
         Toast.makeText(this, "${shizule.name} is visible in Store", Toast.LENGTH_LONG).show()
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(storeSubmissionUrl(raw, shizule))))
+    }
+
+    private fun showPublishReview(raw: String, shizule: Shizule, installAfterPublish: Boolean, onDone: () -> Unit) {
+        showInstallReview(
+            raw = raw,
+            shizule = shizule,
+            source = null,
+            title = if (installAfterPublish) "Review publish and install" else "Review publish",
+            actionLabel = if (installAfterPublish) "Publish & Install" else "Publish",
+            blockedTitle = "Publish Blocked"
+        ) {
+            if (installAfterPublish) {
+                if (installTrusted(raw, shizule, refreshAfterInstall = true, showToast = true)) {
+                    publishCreatedShizule(raw, shizule)
+                    onDone()
+                }
+            } else {
+                publishCreatedShizule(raw, shizule)
+                onDone()
+            }
+        }
     }
 
     private fun saveLocalStoreItem(raw: String, shizule: Shizule) {
@@ -2171,17 +2200,30 @@ class MainActivity : Activity() {
                 })
                 addView(actionsContainer)
                 addView(compactButton("Add Action", filled = false) { addAction("New Action", "echo Hello from Shizulu") }, spacedParams(top = 10))
-                addView(compactButton("Publish", filled = true) {
-                    runCatching {
-                        val raw = buildVisualShizuleJson(nameInput, idInput, versionInput, descriptionInput, worksOnInput, minInput, maxInput, requiresShizuku, requiresAdb, permissionChecks, actionsContainer)
-                        raw to Shizule.fromJson(raw)
-                    }.onSuccess { (raw, shizule) ->
-                        showInstallReview(raw, shizule, null) {
-                            installTrusted(raw, shizule)
-                            publishCreatedShizule(raw, shizule)
-                            dialog.dismiss()
-                        }
-                    }.onFailure { showOutput("Visual Builder", it.message ?: "Could not build shizule.") }
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(compactButton("Publish", filled = true) {
+                        runCatching {
+                            val raw = buildVisualShizuleJson(nameInput, idInput, versionInput, descriptionInput, worksOnInput, minInput, maxInput, requiresShizuku, requiresAdb, permissionChecks, actionsContainer)
+                            raw to Shizule.fromJson(raw)
+                        }.onSuccess { (raw, shizule) ->
+                            showPublishReview(raw, shizule, installAfterPublish = false) {
+                                dialog.dismiss()
+                            }
+                        }.onFailure { showOutput("Visual Builder", it.message ?: "Could not build shizule.") }
+                    }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                    addView(compactButton("Publish & Install", filled = true) {
+                        runCatching {
+                            val raw = buildVisualShizuleJson(nameInput, idInput, versionInput, descriptionInput, worksOnInput, minInput, maxInput, requiresShizuku, requiresAdb, permissionChecks, actionsContainer)
+                            raw to Shizule.fromJson(raw)
+                        }.onSuccess { (raw, shizule) ->
+                            showPublishReview(raw, shizule, installAfterPublish = true) {
+                                dialog.dismiss()
+                            }
+                        }.onFailure { showOutput("Visual Builder", it.message ?: "Could not build shizule.") }
+                    }, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                        leftMargin = dp(8)
+                    })
                 }, spacedParams(top = 10))
             })
         }
@@ -2327,40 +2369,58 @@ class MainActivity : Activity() {
 
         lateinit var dialog: android.app.AlertDialog
         val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             setPadding(0, dp(12), 0, 0)
-            addView(secondaryButton("Cancel") { dialog.dismiss() }, LinearLayout.LayoutParams(0, dp(46), 1f))
-            addView(compactButton("Install", filled = true) {
-                val raw = editor.text.toString()
-                runCatching { Shizule.fromJson(raw) }
-                    .onSuccess { shizule ->
-                        showInstallReview(raw, shizule, null) {
-                            installTrusted(raw, shizule)
-                            dialog.dismiss()
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(secondaryButton("Cancel") { dialog.dismiss() }, LinearLayout.LayoutParams(0, dp(46), 1f))
+                addView(compactButton("Install", filled = true) {
+                    val raw = editor.text.toString()
+                    runCatching { Shizule.fromJson(raw) }
+                        .onSuccess { shizule ->
+                            showInstallReview(raw, shizule, null) {
+                                installTrusted(raw, shizule)
+                                dialog.dismiss()
+                            }
                         }
-                    }
-                    .onFailure {
-                        val message = it.message ?: "Invalid shizule JSON"
-                        appendLog("Module Maker install failed: $message")
-                        showOutput("Module Maker", "Invalid shizule:\n\n$message")
-                    }
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
-            addView(compactButton("Publish", filled = true) {
-                val raw = editor.text.toString()
-                runCatching { Shizule.fromJson(raw) }
-                    .onSuccess { shizule ->
-                        showInstallReview(raw, shizule, null) {
-                            installTrusted(raw, shizule)
-                            publishCreatedShizule(raw, shizule)
-                            dialog.dismiss()
+                        .onFailure {
+                            val message = it.message ?: "Invalid shizule JSON"
+                            appendLog("Module Maker install failed: $message")
+                            showOutput("Module Maker", "Invalid shizule:\n\n$message")
                         }
-                    }
-                    .onFailure {
-                        val message = it.message ?: "Invalid shizule JSON"
-                        appendLog("Module Maker publish failed: $message")
-                        showOutput("Module Maker", "Invalid shizule:\n\n$message")
-                    }
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
+                }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(compactButton("Publish", filled = true) {
+                    val raw = editor.text.toString()
+                    runCatching { Shizule.fromJson(raw) }
+                        .onSuccess { shizule ->
+                            showPublishReview(raw, shizule, installAfterPublish = false) {
+                                dialog.dismiss()
+                            }
+                        }
+                        .onFailure {
+                            val message = it.message ?: "Invalid shizule JSON"
+                            appendLog("Module Maker publish failed: $message")
+                            showOutput("Module Maker", "Invalid shizule:\n\n$message")
+                        }
+                }, LinearLayout.LayoutParams(0, dp(46), 1f))
+                addView(compactButton("Publish & Install", filled = true) {
+                    val raw = editor.text.toString()
+                    runCatching { Shizule.fromJson(raw) }
+                        .onSuccess { shizule ->
+                            showPublishReview(raw, shizule, installAfterPublish = true) {
+                                dialog.dismiss()
+                            }
+                        }
+                        .onFailure {
+                            val message = it.message ?: "Invalid shizule JSON"
+                            appendLog("Module Maker publish and install failed: $message")
+                            showOutput("Module Maker", "Invalid shizule:\n\n$message")
+                        }
+                }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
+            }, spacedParams(top = 8))
         }
         content.addView(actions)
 
