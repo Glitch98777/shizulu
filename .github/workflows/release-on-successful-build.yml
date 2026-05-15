@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "README.md"
-      - "RELEASE_NOTES.md"
   workflow_dispatch:
 
 concurrency:
@@ -45,26 +42,46 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --console=plain
 
+      - name: Compute build metadata
+        id: meta
+        run: |
+          BUILD_NUMBER="$(git rev-list --count HEAD)"
+          TAG="build-${BUILD_NUMBER}"
+          TITLE="Shizulu successful build ${BUILD_NUMBER}"
+          APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
+          APK_NAME="Shizulu-${TAG}.apk"
+          echo "build_number=${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "apk_src=${APK_SRC}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_NUMBER: ${{ github.run_number }}
           SHA: ${{ github.sha }}
         run: |
-          TAG="build-${RUN_NUMBER}"
-          TITLE="Shizulu successful build ${RUN_NUMBER}"
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          TAG="${{ steps.meta.outputs.tag }}"
+          TITLE="${{ steps.meta.outputs.title }}"
+          APK="${{ steps.meta.outputs.apk_src }}"
+          APK_NAME="${{ steps.meta.outputs.apk_name }}"
           NOTES=$(cat <<EOF
           Automated release from a successful build on main.
 
           Commit: ${SHA}
-          APK: Shizulu-${TAG}.apk
+          Build: ${{ steps.meta.outputs.build_number }}
+          APK: ${APK_NAME}
           EOF
           )
 
-          cp "$APK" "Shizulu-${TAG}.apk"
-          gh release create "$TAG" "Shizulu-${TAG}.apk" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$TITLE" \
-            --notes "$NOTES" \
-            --latest
+          cp "$APK" "$APK_NAME"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_NAME" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes "$NOTES" --latest
+          else
+            gh release create "$TAG" "$APK_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+              --latest
+          fi

@@ -82,7 +82,7 @@ data class Shizule(
                         val warnings = buildList {
                             if (shizule.description.isBlank()) add("Add a short description so users know what the module changes.")
                             if (shizule.restore.level == RestoreSupport.NONE) add("No restore metadata was declared. Shizulu will only restore values it can snapshot automatically.")
-                            if (shizule.compatibility.requires.isEmpty()) add("Declare whether this module works with Shizuku, Wireless ADB, or both.")
+                            if (shizule.compatibility.requires.isEmpty()) add("Declare whether this module works with ShizGuru (Shizuku), Wireless ADB, or both.")
                             val declaredVariables = (shizule.variables + shizule.actions.flatMap { it.variables }).map { it.name }.toSet()
                             val referenced = shizule.actions.flatMap { action ->
                                 (action.commands + action.restoreCommands + action.prechecks + action.postchecks)

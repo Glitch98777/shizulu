@@ -381,7 +381,7 @@ class MainActivity : Activity() {
                 })
 
                 addView(TextView(context).apply {
-                    text = "Rootless modules over Shizuku or Wireless ADB"
+                    text = "Rootless modules over ShizGuru (Shizuku) or Wireless ADB"
                     textSize = 14f
                     setTextColor(COLORS.muted)
                     includeFontPadding = false
@@ -451,7 +451,7 @@ class MainActivity : Activity() {
 
                 addView(primaryButton("Install shizule") { openJsonPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-                grantButton = readableSecondaryButton("Grant Shizuku") { handleBindButtonTap() }
+                grantButton = readableSecondaryButton("Grant ShizGuru (Shizuku)") { handleBindButtonTap() }
                 addView(grantButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     leftMargin = dp(10)
                 })
@@ -653,7 +653,7 @@ class MainActivity : Activity() {
             })
 
             addView(TextView(context).apply {
-                text = "Shizuku is fully supported. Wireless ADB can now pair, discover the local ADB service, and run shizules without Shizuku."
+                text = "ShizGuru (Shizuku) is fully supported. Wireless ADB can now pair, discover the local ADB service, and run shizules without ShizGuru (Shizuku)."
                 textSize = 13f
                 setTextColor(COLORS.muted)
                 setPadding(0, dp(5), 0, dp(10))
@@ -661,7 +661,7 @@ class MainActivity : Activity() {
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                val shizukuButton = compactButton("Use Shizuku", filled = executionMode == ExecutionMode.SHIZUKU) {
+                val shizukuButton = compactButton("Use ShizGuru (Shizuku)", filled = executionMode == ExecutionMode.SHIZUKU) {
                     setExecutionMode(ExecutionMode.SHIZUKU)
                 }
                 val wirelessButton = compactButton("Use Wireless ADB", filled = executionMode == ExecutionMode.WIRELESS_ADB) {
@@ -946,7 +946,7 @@ class MainActivity : Activity() {
                     "Wireless ADB mode"
                 } else {
                     when {
-                        !binderAlive -> "Shizuku is not connected"
+                        !binderAlive -> "ShizGuru (Shizuku) is not connected"
                         !permissionGranted -> "Permission needed"
                         uid == null -> "Ready to bind service"
                         else -> "Shizulu is ready"
@@ -963,7 +963,7 @@ class MainActivity : Activity() {
                     }
                 } else {
                     when {
-                        !binderAlive -> "Start Shizuku to use this backend"
+                        !binderAlive -> "Start ShizGuru (Shizuku) to use this backend"
                         !permissionGranted -> "Grant shell access"
                         uid == null -> "Bind service to run shizules"
                         else -> "Bound as uid $uid"
@@ -976,7 +976,7 @@ class MainActivity : Activity() {
                 if (::permissionChip.isInitialized) setChip(permissionChip, if (wirelessConfigured) "Configured" else "Needs pairing", wirelessConfigured)
                 if (::serviceChip.isInitialized) setChip(serviceChip, if (wirelessConfigured) "ADB ready" else "ADB setup", wirelessConfigured)
             } else {
-                if (::shizukuChip.isInitialized) setChip(shizukuChip, if (binderAlive) "Shizuku running" else "Shizuku offline", binderAlive)
+                if (::shizukuChip.isInitialized) setChip(shizukuChip, if (binderAlive) "ShizGuru (Shizuku) running" else "ShizGuru (Shizuku) offline", binderAlive)
                 if (::permissionChip.isInitialized) setChip(permissionChip, if (permissionGranted) "Allowed" else "Needs grant", permissionGranted)
                 if (::serviceChip.isInitialized) setChip(serviceChip, if (uid != null) "Service bound" else "Service idle", uid != null)
             }
@@ -994,7 +994,7 @@ class MainActivity : Activity() {
                 grantButton.text = when {
                     wirelessMode -> "Wireless ADB mode"
                     permissionGranted -> "Bind service"
-                    else -> "Grant Shizuku"
+                    else -> "Grant ShizGuru (Shizuku)"
                 }
             }
         }
@@ -2160,7 +2160,7 @@ class MainActivity : Activity() {
         val maxInput = builderInput("Android max", "16")
 
         val requiresShizuku = android.widget.CheckBox(this).apply {
-            text = "Requires Shizuku"
+            text = "Requires ShizGuru (Shizuku)"
             setTextColor(COLORS.ink)
             isChecked = true
         }
@@ -2605,7 +2605,7 @@ class MainActivity : Activity() {
             val port = settingsPrefs.getInt(KEY_ADB_PAIR_PORT, 0)
             if (pairingCode.isBlank() || port <= 0) {
                 appendLog("$title blocked: Wireless ADB not configured")
-                showOutput(title, "Pair Wireless ADB first, or switch the execution backend to Shizuku.")
+                showOutput(title, "Pair Wireless ADB first, or switch the execution backend to ShizGuru (Shizuku).")
                 return
             }
             appendLog("Power command started over Wireless ADB: $title")
@@ -2637,7 +2637,7 @@ class MainActivity : Activity() {
             return
         }
 
-        appendLog("Power command started over Shizuku: $title")
+        appendLog("Power command started over ShizGuru (Shizuku): $title")
         executor.execute {
             runCatching { currentService.runShizuleCommand(moduleId, command) }
                 .onSuccess { result ->
@@ -2655,8 +2655,8 @@ class MainActivity : Activity() {
 
     private fun requestShizukuPermission() {
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
-            appendLog("Shizuku permission request failed: Shizuku is not connected")
-            Toast.makeText(this, "Start Shizuku first.", Toast.LENGTH_LONG).show()
+            appendLog("ShizGuru (Shizuku) permission request failed: ShizGuru (Shizuku) is not connected")
+            Toast.makeText(this, "Start ShizGuru (Shizuku) first.", Toast.LENGTH_LONG).show()
             renderStatus()
             return
         }
@@ -2670,13 +2670,13 @@ class MainActivity : Activity() {
             return
         }
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
-            appendLog("Bind button blocked: Shizuku is not connected")
-            Toast.makeText(this, "Start Shizuku first.", Toast.LENGTH_LONG).show()
+            appendLog("Bind button blocked: ShizGuru (Shizuku) is not connected")
+            Toast.makeText(this, "Start ShizGuru (Shizuku) first.", Toast.LENGTH_LONG).show()
             renderStatus()
             return
         }
         if (!hasShizukuPermission()) {
-            appendLog("Bind button requesting Shizuku permission")
+            appendLog("Bind button requesting ShizGuru (Shizuku) permission")
             Shizuku.requestPermission(REQUEST_SHIZUKU)
             return
         }
@@ -2692,7 +2692,7 @@ class MainActivity : Activity() {
 
     private fun bindUserService(force: Boolean = false) {
         if (!hasShizukuPermission()) {
-            appendLog("Service bind skipped: Shizuku permission is missing")
+            appendLog("Service bind skipped: ShizGuru (Shizuku) permission is missing")
             renderStatus()
             return
         }
@@ -3738,7 +3738,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildDryRunPreview(actions: List<Pair<Shizule, ShizuleAction>>, profileName: String? = null): String {
-        val backend = if (executionMode == ExecutionMode.WIRELESS_ADB) "Wireless ADB" else "Shizuku"
+        val backend = if (executionMode == ExecutionMode.WIRELESS_ADB) "Wireless ADB" else "ShizGuru (Shizuku)"
         val commandCount = actions.sumOf { it.second.commands.size }
         return buildString {
             append("Dry run: no commands executed.\n")
@@ -4468,10 +4468,10 @@ class MainActivity : Activity() {
                 if (sdk > max) add("This module expects Android $max or older. This device reports SDK $sdk.")
             }
             if ("shizuku" in compatibility.requires && executionMode != ExecutionMode.SHIZUKU) {
-                add("This module asks for Shizuku. Switch the backend if Wireless ADB cannot run it.")
+                add("This module asks for ShizGuru (Shizuku). Switch the backend if Wireless ADB cannot run it.")
             }
             if ((compatibility.requires.contains("adb") || compatibility.requires.contains("wireless_adb")) && executionMode != ExecutionMode.WIRELESS_ADB) {
-                add("This module asks for ADB. Switch to Wireless ADB if Shizuku cannot run it.")
+                add("This module asks for ADB. Switch to Wireless ADB if ShizGuru (Shizuku) cannot run it.")
             }
         }
     }
@@ -4736,7 +4736,7 @@ enum class Page {
 }
 
 enum class ExecutionMode(val label: String) {
-    SHIZUKU("Shizuku"),
+    SHIZUKU("ShizGuru (Shizuku)"),
     WIRELESS_ADB("Wireless ADB");
 
     companion object {

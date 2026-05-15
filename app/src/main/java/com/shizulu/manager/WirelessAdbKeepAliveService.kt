@@ -60,7 +60,7 @@ class WirelessAdbKeepAliveService : Service() {
         val pairingCode = prefs.getString(KEY_ADB_PAIRING_CODE, "").orEmpty()
         val port = prefs.getInt(KEY_ADB_PAIR_PORT, 0)
         if (pairingCode.isBlank() || port <= 0) {
-            updateNotification(if (shizukuReady) "Shizuku is visible; pair Wireless ADB for standalone mode" else "Pair Wireless ADB in Shizulu to enable keep-alive")
+            updateNotification(if (shizukuReady) "ShizGuru (Shizuku) is visible; pair Wireless ADB for standalone mode" else "Pair Wireless ADB in Shizulu to enable keep-alive")
             return
         }
 
@@ -68,9 +68,9 @@ class WirelessAdbKeepAliveService : Service() {
             if (!verifying.compareAndSet(false, true)) return@Thread
             val status = runCatching {
                 WirelessAdbRunner(applicationContext).test(pairingCode, port)
-                if (shizukuReady) "Wireless ADB and Shizuku are visible" else "Wireless ADB is connected"
+                if (shizukuReady) "Wireless ADB and ShizGuru (Shizuku) are visible" else "Wireless ADB is connected"
             }.getOrElse {
-                if (shizukuReady) "Shizuku visible; Wireless ADB reconnecting" else "Wireless ADB keep-alive reconnecting"
+                if (shizukuReady) "ShizGuru (Shizuku) visible; Wireless ADB reconnecting" else "Wireless ADB keep-alive reconnecting"
             }.also {
                 verifying.set(false)
             }

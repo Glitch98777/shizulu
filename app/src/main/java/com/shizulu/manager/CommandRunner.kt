@@ -39,7 +39,7 @@ class MockCommandRunner : CommandRunner {
 }
 
 class ShizukuCommandRunner(private val service: IShizuluService) : CommandRunner {
-    override val name: String = "Shizuku"
+    override val name: String = "ShizGuru (Shizuku)"
 
     override fun run(moduleId: String, command: ShizuleCommand, timeoutMs: Long): CommandResult {
         val start = SystemClock.elapsedRealtime()
