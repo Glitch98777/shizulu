@@ -19,16 +19,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout ShizGuru source
         uses: actions/checkout@v4
         with:
+          repository: Glitch98777/shizguru
+          ref: main
+          path: shizguru
           fetch-depth: 0
+          submodules: recursive
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -36,30 +40,33 @@ jobs:
       - name: Add Android SDK tools to PATH
         run: echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
-      - name: Install Android SDK 36
-        run: yes | sdkmanager "platforms;android-36"
+      - name: Install Android SDK components
+        run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;28.2.13676358"
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --console=plain
+      - name: Build ShizGuru debug APK
+        working-directory: shizguru
+        run: ./gradlew :manager:assembleDebug --no-daemon --console=plain
 
       - name: Compute build metadata
         id: meta
+        working-directory: shizguru
         run: |
           BUILD_NUMBER="$(git rev-list --count HEAD)"
+          SHA="$(git rev-parse HEAD)"
           TAG="build-${BUILD_NUMBER}"
-          TITLE="Shizulu successful build ${BUILD_NUMBER}"
-          APK_SRC="app/build/outputs/apk/debug/app-debug.apk"
-          APK_NAME="Shizulu-${TAG}.apk"
+          TITLE="ShizGuru build ${BUILD_NUMBER}"
+          APK_SRC="$(find manager/build/outputs/apk/debug -name 'ShizGuru-*.apk' | head -n 1)"
+          APK_NAME="ShizGuru-${TAG}.apk"
           echo "build_number=${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
-          echo "apk_src=${APK_SRC}" >> "$GITHUB_OUTPUT"
+          echo "apk_src=shizguru/${APK_SRC}" >> "$GITHUB_OUTPUT"
           echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.sha }}
         run: |
           TAG="${{ steps.meta.outputs.tag }}"
           TITLE="${{ steps.meta.outputs.title }}"
@@ -68,7 +75,7 @@ jobs:
           NOTES=$(cat <<EOF
           Automated release from a successful build on main.
 
-          Commit: ${SHA}
+          ShizGuru commit: ${{ steps.meta.outputs.sha }}
           Build: ${{ steps.meta.outputs.build_number }}
           APK: ${APK_NAME}
           EOF
