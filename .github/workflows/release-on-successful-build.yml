@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "README.md"
+      - "RELEASE_NOTES.md"
   workflow_dispatch:
 
 concurrency:
