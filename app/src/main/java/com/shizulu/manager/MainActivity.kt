@@ -109,6 +109,9 @@ class MainActivity : Activity() {
     private lateinit var modulesNav: LinearLayout
     private lateinit var storeNav: LinearLayout
     private lateinit var toolsNav: LinearLayout
+    private val storeRiskButtons = linkedMapOf<String, TextView>()
+    private val storeSortButtons = linkedMapOf<String, TextView>()
+    private val executionModeButtons = linkedMapOf<ExecutionMode, TextView>()
     private var service: IShizuluService? = null
     private var dryRunEnabled = false
     private var executionMode = ExecutionMode.SHIZUKU
@@ -507,6 +510,8 @@ class MainActivity : Activity() {
     }
 
     private fun storeHeader(): View {
+        storeRiskButtons.clear()
+        storeSortButtons.clear()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
 
@@ -533,6 +538,8 @@ class MainActivity : Activity() {
 
             addView(EditText(context).apply {
                 hint = "Search modules, tags, authors"
+                setText(storeSearchQuery)
+                setSelection(text.length)
                 textSize = 13f
                 setSingleLine(true)
                 setTextColor(COLORS.ink)
@@ -554,10 +561,13 @@ class MainActivity : Activity() {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 listOf("All", "Low", "Medium", "High").forEachIndexed { index, label ->
-                    addView(compactButton(label, filled = storeRiskFilter == label) {
+                    val button = compactButton(label, filled = storeRiskFilter == label) {
                         storeRiskFilter = label
+                        renderStoreControls()
                         refreshStoreList()
-                    }, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                    }
+                    storeRiskButtons[label] = button
+                    addView(button, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
                         if (index > 0) leftMargin = dp(8)
                     })
                 }
@@ -566,10 +576,13 @@ class MainActivity : Activity() {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 listOf("Risk", "Name", "Updated").forEachIndexed { index, label ->
-                    addView(compactButton("Sort: $label", filled = storeSortMode == label) {
+                    val button = compactButton("Sort: $label", filled = storeSortMode == label) {
                         storeSortMode = label
+                        renderStoreControls()
                         refreshStoreList()
-                    }, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                    }
+                    storeSortButtons[label] = button
+                    addView(button, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
                         if (index > 0) leftMargin = dp(8)
                     })
                 }
@@ -627,6 +640,7 @@ class MainActivity : Activity() {
     }
 
     private fun executionModePanel(): View {
+        executionModeButtons.clear()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 0, 0, dp(10))
@@ -647,12 +661,16 @@ class MainActivity : Activity() {
 
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(compactButton("Use Shizuku", filled = executionMode == ExecutionMode.SHIZUKU) {
+                val shizukuButton = compactButton("Use Shizuku", filled = executionMode == ExecutionMode.SHIZUKU) {
                     setExecutionMode(ExecutionMode.SHIZUKU)
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
-                addView(compactButton("Use Wireless ADB", filled = executionMode == ExecutionMode.WIRELESS_ADB) {
+                }
+                val wirelessButton = compactButton("Use Wireless ADB", filled = executionMode == ExecutionMode.WIRELESS_ADB) {
                     setExecutionMode(ExecutionMode.WIRELESS_ADB)
-                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
+                }
+                executionModeButtons[ExecutionMode.SHIZUKU] = shizukuButton
+                executionModeButtons[ExecutionMode.WIRELESS_ADB] = wirelessButton
+                addView(shizukuButton, LinearLayout.LayoutParams(0, dp(42), 1f))
+                addView(wirelessButton, LinearLayout.LayoutParams(0, dp(42), 1f).apply { leftMargin = dp(10) })
             })
         }
     }
@@ -1042,6 +1060,15 @@ class MainActivity : Activity() {
             else -> visibleStoreItems().forEachIndexed { index, item ->
                 storeList.addView(storeItemView(item), spacedParams(top = if (index == 0) 0 else 12))
             }
+        }
+    }
+
+    private fun renderStoreControls() {
+        storeRiskButtons.forEach { (label, button) ->
+            applyCompactButtonState(button, storeRiskFilter == label)
+        }
+        storeSortButtons.forEach { (label, button) ->
+            applyCompactButtonState(button, storeSortMode == label)
         }
     }
 
@@ -2710,8 +2737,15 @@ class MainActivity : Activity() {
         executionMode = mode
         settingsPrefs.edit().putString(KEY_EXECUTION_MODE, mode.name).apply()
         appendLog("Execution backend set to ${mode.label}")
+        renderExecutionModeControls()
         renderStatus()
         if (currentPage == Page.TOOLS) showPage(Page.TOOLS)
+    }
+
+    private fun renderExecutionModeControls() {
+        executionModeButtons.forEach { (mode, button) ->
+            applyCompactButtonState(button, executionMode == mode)
+        }
     }
 
     private fun saveAppearance(mode: AppearanceMode, accent: AccentTheme) {
@@ -4320,15 +4354,22 @@ class MainActivity : Activity() {
     }
 
     private fun compactButton(label: String, filled: Boolean, onClick: () -> Unit): TextView {
-        val background = if (filled) COLORS.primary else COLORS.surfaceAlt
-        val foreground = if (filled) COLORS.onPrimary else COLORS.ink
-        val stroke = if (filled) 0 else COLORS.outlineStrong
-        return textButton(label, background, foreground, stroke, onClick).apply {
+        return textButton(label, COLORS.surfaceAlt, COLORS.ink, COLORS.outlineStrong, onClick).apply {
             textSize = 13f
             minWidth = dp(88)
             minHeight = dp(38)
             setPadding(dp(14), 0, dp(14), 0)
+            applyCompactButtonState(this, filled)
         }
+    }
+
+    private fun applyCompactButtonState(button: TextView, filled: Boolean) {
+        val background = if (filled) COLORS.primary else COLORS.surfaceAlt
+        val foreground = if (filled) COLORS.onPrimary else COLORS.ink
+        val stroke = if (filled) 0 else COLORS.outlineStrong
+        button.setTextColor(foreground)
+        button.background = ripple(background, stroke)
+        button.isSelected = filled
     }
 
     private fun textButton(
