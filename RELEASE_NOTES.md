@@ -43,6 +43,7 @@ Initial public release of Shizulu, a rootless Android shizule manager for Shizuk
 - Added a clean `CommandRunner` abstraction plus unit tests for schema validation, risk scanning, restore planning, and digest/tamper labeling.
 - Compatibility badges now infer "Probably compatible" from generic shell modules instead of showing "Unknown compatibility" for every module that lacks explicit metadata.
 - Risk labels now use readable text like `medium risk`, and the critical scanner avoids false positives from harmless `bypass` text or optional package names containing `android`.
+- Bind Service now uses a dedicated Shizuku action path, retries stale service binders, logs bind attempts, and shows clear bind success/failure feedback.
 - App updater now ignores tester APK assets, validates the downloaded package before launching Android's installer, and uses a stable signing key for future updates.
 - Developer Options opens as a separate Android Settings task.
 - Appearance settings in Tools for Light/Dark mode, Default no-accent styling, and accent themes.

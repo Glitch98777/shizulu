@@ -139,11 +139,26 @@ class MainActivity : Activity() {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             service = IShizuluService.Stub.asInterface(binder)
+            appendLog("Shizulu service bound")
+            Toast.makeText(this@MainActivity, "Shizulu service bound", Toast.LENGTH_SHORT).show()
             renderStatus()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
             service = null
+            appendLog("Shizulu service disconnected")
+            renderStatus()
+        }
+
+        override fun onBindingDied(name: ComponentName) {
+            service = null
+            appendLog("Shizulu service binding died")
+            renderStatus()
+        }
+
+        override fun onNullBinding(name: ComponentName) {
+            service = null
+            appendLog("Shizulu service returned null binding")
             renderStatus()
         }
     }
@@ -433,9 +448,7 @@ class MainActivity : Activity() {
 
                 addView(primaryButton("Install shizule") { openJsonPicker() }, LinearLayout.LayoutParams(0, dp(48), 1f))
 
-                grantButton = readableSecondaryButton("Grant Shizuku") {
-                    if (executionMode == ExecutionMode.WIRELESS_ADB) showPage(Page.TOOLS) else requestShizukuPermission()
-                }
+                grantButton = readableSecondaryButton("Grant Shizuku") { handleBindButtonTap() }
                 addView(grantButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     leftMargin = dp(10)
                 })
@@ -902,7 +915,11 @@ class MainActivity : Activity() {
         mainHandler.post {
             val binderAlive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
             val permissionGranted = binderAlive && hasShizukuPermission()
-            val uid = service?.let { runCatching { it.uid }.getOrNull() }
+            val uid = service?.let {
+                runCatching { it.uid }
+                    .onFailure { service = null }
+                    .getOrNull()
+            }
             val wirelessMode = executionMode == ExecutionMode.WIRELESS_ADB
             val wirelessConfigured = wirelessAdbConfigured()
 
@@ -2560,14 +2577,53 @@ class MainActivity : Activity() {
         else bindUserService()
     }
 
+    private fun handleBindButtonTap() {
+        if (executionMode == ExecutionMode.WIRELESS_ADB) {
+            showPage(Page.TOOLS)
+            return
+        }
+        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+            appendLog("Bind button blocked: Shizuku is not connected")
+            Toast.makeText(this, "Start Shizuku first.", Toast.LENGTH_LONG).show()
+            renderStatus()
+            return
+        }
+        if (!hasShizukuPermission()) {
+            appendLog("Bind button requesting Shizuku permission")
+            Shizuku.requestPermission(REQUEST_SHIZUKU)
+            return
+        }
+        appendLog("Bind button requested service bind")
+        bindUserService(force = true)
+    }
+
     private fun hasShizukuPermission(): Boolean {
         return runCatching {
             !Shizuku.isPreV11() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         }.getOrDefault(false)
     }
 
-    private fun bindUserService() {
-        if (service != null || !hasShizukuPermission()) return
+    private fun bindUserService(force: Boolean = false) {
+        if (!hasShizukuPermission()) {
+            appendLog("Service bind skipped: Shizuku permission is missing")
+            renderStatus()
+            return
+        }
+        val currentService = service
+        if (!force && currentService != null && runCatching { currentService.uid }.isSuccess) {
+            renderStatus()
+            return
+        }
+        if (force && currentService != null && runCatching { currentService.uid }.isSuccess) {
+            appendLog("Service bind skipped: already bound")
+            Toast.makeText(this, "Service already bound", Toast.LENGTH_SHORT).show()
+            renderStatus()
+            return
+        }
+        if (currentService != null) {
+            appendLog("Discarding stale Shizulu service binder before rebind")
+            service = null
+        }
         val args = Shizuku.UserServiceArgs(
             ComponentName(packageName, ShizuluUserService::class.java.name)
         )
@@ -2575,7 +2631,19 @@ class MainActivity : Activity() {
             .debuggable(BuildConfig.DEBUG)
             .processNameSuffix("service")
             .version(1)
-        Shizuku.bindUserService(args, serviceConnection)
+        runCatching {
+            Shizuku.bindUserService(args, serviceConnection)
+        }
+            .onSuccess {
+                appendLog("Shizulu service bind requested")
+                Toast.makeText(this, "Binding Shizulu service...", Toast.LENGTH_SHORT).show()
+            }
+            .onFailure {
+                val message = it.message ?: it.javaClass.simpleName
+                appendLog("Shizulu service bind failed: $message")
+                Toast.makeText(this, "Bind failed: $message", Toast.LENGTH_LONG).show()
+            }
+        renderStatus()
     }
 
     private fun setExecutionMode(mode: ExecutionMode) {
